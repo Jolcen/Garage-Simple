@@ -2,13 +2,8 @@ import os
 from datetime import datetime
 
 from PIL import Image, ImageDraw, ImageFont, ImageWin
-
-try:
-    import win32print
-    import win32ui
-except ImportError:
-    win32print = None
-    win32ui = None
+import win32print
+import win32ui
 
 try:
     from database.db import get_connection

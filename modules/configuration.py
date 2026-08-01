@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from database.db import get_connection
+from utils.common import centrar_ventana
 
 
 # =========================================================
@@ -519,10 +520,11 @@ class TipoVehiculoForm(tk.Toplevel):
 # DIALOGO DE PREVIEW QR
 # =========================================================
 class QRPreviewDialog:
-    def __init__(self, parent_view, qr_path, user_data):
+    def __init__(self, parent_view, user_data):
         self.parent_view = parent_view
-        self.qr_path = qr_path
         self.user_data = user_data or {}
+        self.ruta_seleccionada = None
+        self.qr_image_ref = None
 
         self.window = tk.Toplevel()
         self.window.title("Actualizar QR de Pago")
@@ -536,7 +538,8 @@ class QRPreviewDialog:
             pass
 
         self._build_ui()
-        centrar_ventana(self.window, 350, 350, parent_view.winfo_toplevel())
+        self._cargar_qr_actual()
+        centrar_ventana(self.window, 320, 380, parent_view.winfo_toplevel())
 
         try:
             self.window.grab_set()
@@ -550,107 +553,112 @@ class QRPreviewDialog:
 
         tk.Label(
             frame,
-            text="Nuevo QR de Pago",
+            text="QR de Pago",
             font=("Arial", 13, "bold"),
             bg=COLOR_BG,
             fg=COLOR_TEXT,
         ).pack(anchor="w", pady=(0, 10))
 
-        # Preview del nuevo QR
-        preview_frame = tk.Frame(frame, bg=COLOR_CARD, bd=1, relief="solid")
-        preview_frame.pack(fill="x", pady=(0, 10))
+        # Preview del QR
+        self.preview_frame = tk.Frame(frame, bg=COLOR_CARD, bd=1, relief="solid")
+        self.preview_frame.pack(fill="x", pady=(0, 12))
 
-        try:
-            from PIL import Image, ImageTk
-            img = Image.open(self.qr_path)
-            img.thumbnail((200, 200))
-            self.qr_image_ref = ImageTk.PhotoImage(img)
-            tk.Label(
-                preview_frame,
-                image=self.qr_image_ref,
-                bg=COLOR_CARD,
-            ).pack(padx=10, pady=10)
-        except ImportError:
-            tk.Label(
-                preview_frame,
-                text=f"Preview no disponible\nRuta: {self.qr_path}",
-                font=("Arial", 9),
-                bg=COLOR_CARD,
-                fg=COLOR_MUTED,
-            ).pack(padx=10, pady=10)
-        except Exception as e:
-            tk.Label(
-                preview_frame,
-                text=f"Error al cargar preview:\n{e}",
-                font=("Arial", 9),
-                bg=COLOR_CARD,
-                fg=COLOR_DANGER,
-            ).pack(padx=10, pady=10)
+        self.preview_label = tk.Label(
+            self.preview_frame,
+            text="Cargando QR actual...",
+            font=("Arial", 9),
+            bg=COLOR_CARD,
+            fg=COLOR_MUTED,
+        )
+        self.preview_label.pack(padx=10, pady=10)
 
-        # Botones de acción
+        # Botones
         btn_frame = tk.Frame(frame, bg=COLOR_BG)
         btn_frame.pack(fill="x")
 
-        # Botón Confirmar
-        btn_confirmar = tk.Button(
+        SimpleButton(
             btn_frame,
-            text="Confirmar",
-            font=("Arial", 10, "bold"),
-            bg=COLOR_PRIMARY,
-            fg="white",
-            relief="flat",
-            cursor="hand2",
-            command=self._confirmar,
-        )
-        btn_confirmar.pack(side="left", expand=True, fill="x", padx=(0, 4))
+            text="Seleccionar",
+            command=self._seleccionar,
+        ).pack(side="left", padx=(0, 4))
 
-        # Botón Cancelar
-        btn_cancelar = tk.Button(
+        SimpleButton(
+            btn_frame,
+            text="Guardar",
+            primary=True,
+            command=self._guardar,
+        ).pack(side="left", padx=(4, 4))
+
+        SimpleButton(
             btn_frame,
             text="Cancelar",
-            font=("Arial", 10),
-            bg=COLOR_CARD,
-            fg=COLOR_TEXT,
-            relief="solid",
-            bd=1,
-            cursor="hand2",
             command=self._cancelar,
-        )
-        btn_cancelar.pack(side="right", expand=True, fill="x", padx=(4, 0))
+        ).pack(side="left", padx=(4, 0))
 
-    def _confirmar(self):
-        """Copia la imagen QR a static/qr.jpg"""
+    def _buscar_qr_actual(self):
+        import os
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        static_dir = os.path.join(base_dir, "static")
+        for nombre in ["qr.png", "qr.jpg", "qr.jpeg"]:
+            ruta = os.path.join(static_dir, nombre)
+            if os.path.exists(ruta):
+                return ruta
+        return None
+
+    def _cargar_qr_actual(self):
+        ruta = self._buscar_qr_actual()
+        if not ruta:
+            self.preview_label.config(text="No se encontró imagen QR")
+            return
+        self._mostrar_preview(ruta)
+
+    def _mostrar_preview(self, ruta):
+        try:
+            from PIL import Image, ImageTk
+            img = Image.open(ruta)
+            img.thumbnail((200, 200))
+            self.qr_image_ref = ImageTk.PhotoImage(img)
+            self.preview_label.config(image=self.qr_image_ref, text="")
+        except ImportError:
+            self.preview_label.config(text="Pillow no instalado")
+        except Exception as e:
+            self.preview_label.config(text=f"Error: {e}")
+
+    def _seleccionar(self):
+        from tkinter import filedialog
+        ruta = filedialog.askopenfilename(
+            title="Seleccionar imagen QR",
+            filetypes=[("Imágenes", "*.png *.jpg *.jpeg *.gif")]
+        )
+        if ruta:
+            self.ruta_seleccionada = ruta
+            self._mostrar_preview(ruta)
+
+    def _guardar(self):
         import shutil
         import os
 
+        if not self.ruta_seleccionada:
+            messagebox.showwarning("Aviso", "Primero selecciona una imagen.", parent=self.window)
+            return
+
         try:
-            # Determinar destino
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             static_dir = os.path.join(base_dir, "static")
             os.makedirs(static_dir, exist_ok=True)
 
-            # Eliminar QRs anteriores
             for ext in [".png", ".jpg", ".jpeg"]:
                 ruta_vieja = os.path.join(static_dir, f"qr{ext}")
                 if os.path.exists(ruta_vieja):
                     os.remove(ruta_vieja)
 
-            # Copiar nuevo QR como qr.jpg
-            destino = os.path.join(static_dir, "qr.jpg")
-            shutil.copy2(self.qr_path, destino)
-
+            shutil.copy2(self.ruta_seleccionada, os.path.join(static_dir, "qr.jpg"))
             self.window.destroy()
             messagebox.showinfo("Éxito", "QR actualizado correctamente.")
-
-            # Refrescar preview en configuración
-            if hasattr(self.parent_view, '_cargar_preview_qr'):
-                self.parent_view._cargar_preview_qr()
-
         except Exception as e:
-            messagebox.showerror("Error", f"No se pudo actualizar el QR:\n{e}", parent=self.window)
+            messagebox.showerror("Error", f"No se pudo guardar:\n{e}", parent=self.window)
 
     def _cancelar(self):
-        """Cancela y cierra el diálogo."""
         self.window.destroy()
 
 
@@ -688,161 +696,95 @@ class ConfigurationView(tk.Frame):
         container.columnconfigure(0, weight=1)
         container.rowconfigure(1, weight=1)
 
-        self._build_card_multa(container)
-        self._build_card_qr(container)
+        self._build_card_config(container)
         self._build_card_tipos(container)
 
-    def _build_card_multa(self, parent):
+    def _build_card_config(self, parent):
         card = tk.Frame(parent, bg=COLOR_CARD, bd=1, relief="solid")
         card.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        card.columnconfigure(0, weight=1)
         card.columnconfigure(1, weight=1)
 
+        # --- COLUMNA IZQUIERDA: MULTA ---
+        left = tk.Frame(card, bg=COLOR_CARD)
+        left.grid(row=0, column=0, sticky="nsew", padx=(14, 7), pady=12)
+        left.columnconfigure(1, weight=1)
+
         tk.Label(
-            card,
+            left,
             text="Multa por pérdida de ticket",
             font=("Arial", 13, "bold"),
             bg=COLOR_CARD,
             fg=COLOR_TEXT,
-        ).grid(row=0, column=0, columnspan=3, sticky="w", padx=14, pady=(12, 4))
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 4))
 
         tk.Label(
-            card,
-            text="Este monto se usa en el ticket impreso y en el cobro cuando se marca 'Ticket perdido'.",
+            left,
+            text="Se usa en ticket impreso y cobro 'Ticket perdido'.",
             font=("Arial", 9),
             bg=COLOR_CARD,
             fg=COLOR_MUTED,
-        ).grid(row=1, column=0, columnspan=3, sticky="w", padx=14, pady=(0, 10))
+        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 10))
 
         tk.Label(
-            card,
+            left,
             text="Monto Bs:",
             font=("Arial", 10, "bold"),
             bg=COLOR_CARD,
             fg=COLOR_TEXT,
-        ).grid(row=2, column=0, sticky="w", padx=(14, 8), pady=(0, 14))
+        ).grid(row=2, column=0, sticky="w", pady=(0, 14))
+
+        input_frame = tk.Frame(left, bg=COLOR_CARD)
+        input_frame.grid(row=2, column=1, columnspan=2, sticky="w", pady=(0, 14))
 
         entry = tk.Entry(
-            card,
+            input_frame,
             textvariable=self.var_multa,
             font=("Arial", 10),
             relief="solid",
             bd=1,
-            width=18,
+            width=14,
         )
-        entry.grid(row=2, column=1, sticky="w", padx=(0, 8), pady=(0, 14), ipady=6)
+        entry.pack(side="left", ipady=6)
 
         SimpleButton(
-            card,
-            text="Guardar multa",
+            input_frame,
+            text="Guardar",
             primary=True,
             command=self.guardar_multa,
-        ).grid(row=2, column=2, sticky="e", padx=(8, 14), pady=(0, 14))
+        ).pack(side="left", padx=(10, 0))
 
-    def _build_card_qr(self, parent):
-        card = tk.Frame(parent, bg=COLOR_CARD, bd=1, relief="solid")
-        card.grid(row=1, column=0, sticky="ew", pady=(0, 12))
-        card.columnconfigure(0, weight=1)
+        # --- COLUMNA DERECHA: QR ---
+        right = tk.Frame(card, bg=COLOR_CARD)
+        right.grid(row=0, column=1, sticky="nsew", padx=(7, 14), pady=12)
+        right.columnconfigure(0, weight=1)
 
         tk.Label(
-            card,
+            right,
             text="QR de Pago",
             font=("Arial", 13, "bold"),
             bg=COLOR_CARD,
             fg=COLOR_TEXT,
-        ).grid(row=0, column=0, sticky="w", padx=14, pady=(12, 4))
+        ).grid(row=0, column=0, sticky="w", pady=(0, 4))
 
         tk.Label(
-            card,
-            text="Imagen QR que se muestra al cliente para pagos con QR.",
+            right,
+            text="Imagen QR que se muestra al cliente.",
             font=("Arial", 9),
             bg=COLOR_CARD,
             fg=COLOR_MUTED,
-        ).grid(row=1, column=0, sticky="w", padx=14, pady=(0, 10))
+        ).grid(row=1, column=0, sticky="w", pady=(0, 10))
 
-        # Frame para preview del QR
-        preview_frame = tk.Frame(card, bg=COLOR_CARD)
-        preview_frame.grid(row=2, column=0, sticky="w", padx=14, pady=(0, 10))
-
-        self.qr_preview_label = tk.Label(
-            preview_frame,
-            text="Cargando QR actual...",
-            font=("Arial", 9),
-            bg=COLOR_CARD,
-            fg=COLOR_MUTED,
-        )
-        self.qr_preview_label.pack(side="left", padx=(0, 10))
-
-        self.qr_image_ref = None
-        self._cargar_preview_qr()
-
-        # Botón actualizar QR
         SimpleButton(
-            card,
+            right,
             text="Actualizar QR",
             primary=True,
             command=self.actualizar_qr,
-        ).grid(row=3, column=0, sticky="w", padx=14, pady=(0, 14))
-
-    def _cargar_preview_qr(self):
-        """Carga y muestra el QR actual."""
-        try:
-            from PIL import Image, ImageTk
-            tiene_pillow = True
-        except ImportError:
-            tiene_pillow = False
-
-        qr_path = self._buscar_qr_path()
-        if not qr_path:
-            self.qr_preview_label.config(text="No se encontró imagen QR en static/")
-            return
-
-        try:
-            if tiene_pillow:
-                img = Image.open(qr_path)
-                img.thumbnail((120, 120))
-                self.qr_image_ref = ImageTk.PhotoImage(img)
-                self.qr_preview_label.config(image=self.qr_image_ref, text="")
-            else:
-                self.qr_preview_label.config(text=f"QR actual: {qr_path}")
-        except Exception as e:
-            self.qr_preview_label.config(text=f"Error al cargar QR: {e}")
-
-    def _buscar_qr_path(self):
-        """Busca la imagen QR en static/."""
-        import os
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        static_dir = os.path.join(base_dir, "static")
-        
-        posibles = ["qr.png", "qr.jpg", "qr.jpeg", "QR.png", "QR.jpg"]
-        for nombre in posibles:
-            ruta = os.path.join(static_dir, nombre)
-            if os.path.exists(ruta):
-                return ruta
-        return None
-
-    def actualizar_qr(self):
-        """Abre file dialog para seleccionar nuevo QR."""
-        from tkinter import filedialog
-        import shutil
-        import os
-
-        ruta_archivo = filedialog.askopenfilename(
-            title="Seleccionar imagen QR",
-            filetypes=[
-                ("Imágenes", "*.png *.jpg *.jpeg *.gif"),
-                ("Todos los archivos", "*.*")
-            ]
-        )
-
-        if not ruta_archivo:
-            return
-
-        # Mostrar preview del nuevo QR y confirmar
-        QRPreviewDialog(self, ruta_archivo, self.user_data)
+        ).grid(row=2, column=0, sticky="w", pady=(0, 0))
 
     def _build_card_tipos(self, parent):
         card = tk.Frame(parent, bg=COLOR_CARD, bd=1, relief="solid")
-        card.grid(row=1, column=0, sticky="nsew")
+        card.grid(row=2, column=0, sticky="nsew")
         card.columnconfigure(0, weight=1)
         card.rowconfigure(2, weight=1)
 
@@ -931,6 +873,10 @@ class ConfigurationView(tk.Frame):
             messagebox.showwarning("Dato inválido", str(e))
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo guardar la multa.\n\n{e}")
+
+    def actualizar_qr(self):
+        """Abre modal de actualización de QR."""
+        QRPreviewDialog(self, self.user_data)
 
     def cargar_tipos_vehiculo(self):
         if self.tree is None:

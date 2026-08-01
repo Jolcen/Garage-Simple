@@ -2233,8 +2233,7 @@ class ContractsView(tk.Frame):
         SimpleButton(actions, text="Limpiar", command=self.limpiar_filtros).grid(row=0, column=8, padx=(0, 8), sticky="w")
 
         SimpleButton(actions, text="Nuevo estándar", primary=True, command=lambda: self.abrir_nuevo(CLASE_ESTANDAR)).grid(row=0, column=11, padx=(0, 8), sticky="e")
-        if es_admin(self.user_data):
-            SimpleButton(actions, text="Nuevo especial", command=lambda: self.abrir_nuevo(CLASE_ESPECIAL)).grid(row=0, column=12, sticky="e")
+        SimpleButton(actions, text="Nuevo especial", command=lambda: self.abrir_nuevo(CLASE_ESPECIAL)).grid(row=0, column=12, sticky="e")
 
         tabla_frame = tk.Frame(container, bg="#ffffff", bd=1, relief="solid")
         tabla_frame.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 12))
