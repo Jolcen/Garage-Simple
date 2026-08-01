@@ -7,6 +7,252 @@ from openpyxl.styles import Font, Alignment
 from database.db import get_connection
 
 
+# =========================================================
+# CATÁLOGOS
+# =========================================================
+ESTADO_PAGO_ANULADO = 0
+ESTADO_PAGO_REGISTRADO = 1
+
+ESTADO_OPERACION_SERVICIO_CANCELADO = 4
+
+TIPO_OPERACION_NORMAL = 1
+TIPO_OPERACION_CONTRATO = 2
+
+CLASE_CONTRATO_ESTANDAR = 1
+CLASE_CONTRATO_ESPECIAL = 2
+
+METODOS_PAGO = {
+    1: "Efectivo",
+    2: "QR",
+}
+
+
+# =========================================================
+# HELPERS
+# =========================================================
+def nombre_metodo_pago(metodo_pago):
+    try:
+        return METODOS_PAGO.get(int(metodo_pago), str(metodo_pago))
+    except Exception:
+        return str(metodo_pago or "")
+
+
+def es_id_valido(valor):
+    return valor not in (None, "", 0, "0")
+
+
+def convertir_float(valor):
+    try:
+        return float(valor or 0)
+    except Exception:
+        return 0.0
+
+
+def columna_existe(cursor, tabla, columna):
+    try:
+        cursor.execute(f"PRAGMA table_info({tabla})")
+        return columna in [row["name"] for row in cursor.fetchall()]
+    except Exception:
+        return False
+
+
+def tabla_existe(cursor, tabla):
+    try:
+        cursor.execute(
+            "SELECT COUNT(*) AS Total FROM sqlite_master WHERE type='table' AND name = ?",
+            (tabla,),
+        )
+        row = cursor.fetchone()
+        return int(row["Total"] if row else 0) > 0
+    except Exception:
+        return False
+
+
+def placas_contrato(cursor, contrato_id, placa_fallback="-"):
+    """
+    Devuelve todas las placas asociadas a un contrato.
+    Usa CONTRATOVEHICULO si existe; si no hay datos, usa la placa principal.
+    """
+    if not es_id_valido(contrato_id):
+        return placa_fallback or "-"
+
+    placas = []
+
+    if tabla_existe(cursor, "CONTRATOVEHICULO"):
+        cursor.execute("""
+            SELECT V.Placa
+            FROM CONTRATOVEHICULO CV
+            INNER JOIN VEHICULO V ON V.Vehiculo = CV.Vehiculo
+            WHERE CV.Contrato = ?
+              AND CV.Estado = 1
+            ORDER BY V.Placa ASC
+        """, (contrato_id,))
+        placas = [str(row["Placa"] or "").strip() for row in cursor.fetchall() if str(row["Placa"] or "").strip()]
+
+    if placas:
+        return ", ".join(placas)
+
+    return placa_fallback or "-"
+
+
+def formatear_fecha(valor):
+    """
+    Muestra fechas siempre como DD/MM/YYYY o DD/MM/YYYY HH:MM.
+    Acepta fechas desde SQLite en YYYY-MM-DD, YYYY-MM-DD HH:MM:SS,
+    o fechas que ya vengan como DD/MM/YYYY.
+    """
+    if not valor:
+        return ""
+
+    texto = str(valor).strip()
+
+    formatos = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y",
+    ]
+
+    for formato in formatos:
+        try:
+            if "%H" in formato:
+                fecha = datetime.strptime(texto[:19], formato)
+                return fecha.strftime("%d/%m/%Y %H:%M")
+
+            fecha = datetime.strptime(texto[:10], formato)
+            return fecha.strftime("%d/%m/%Y")
+        except Exception:
+            pass
+
+    if "-" in texto and len(texto) >= 10:
+        partes = texto[:10].split("-")
+        if len(partes) == 3:
+            resto = texto[10:16]
+            return f"{partes[2]}/{partes[1]}/{partes[0]}{resto}"
+
+    return texto
+
+
+def convertir_fecha_busqueda_a_bd(valor):
+    """
+    Convierte DD/MM/YYYY a YYYY-MM-DD para buscar correctamente en SQLite.
+    """
+    valor = str(valor or "").strip()
+
+    if not valor:
+        return ""
+
+    try:
+        return datetime.strptime(valor, "%d/%m/%Y").strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def convertir_fecha_a_datetime(valor):
+    if not valor:
+        return None
+
+    texto = str(valor).strip()
+
+    formatos = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y",
+    ]
+
+    for formato in formatos:
+        try:
+            return datetime.strptime(texto[:19], formato)
+        except Exception:
+            pass
+
+    return None
+
+
+def calcular_meses_entre_fechas(fecha_inicio, fecha_fin):
+    """
+    Calcula meses para contratos.
+
+    Ejemplo:
+    Inicio: 09/05/2026
+    Fin:    08/06/2026
+    Resultado: 1 mes
+    """
+    inicio = convertir_fecha_a_datetime(fecha_inicio)
+    fin = convertir_fecha_a_datetime(fecha_fin)
+
+    if not inicio or not fin:
+        return 1
+
+    meses = (fin.year - inicio.year) * 12 + (fin.month - inicio.month)
+
+    # En contratos, la fecha fin normalmente es un día antes de cumplirse el mes.
+    # Si termina el mismo día o después, cuenta como un mes adicional.
+    # Si termina justo un día antes, el cálculo mensual ya es correcto.
+    if fin.day >= inicio.day:
+        meses += 1
+
+    if meses <= 0:
+        meses = 1
+
+    return meses
+
+
+def texto_meses(cantidad):
+    try:
+        cantidad = int(cantidad or 1)
+    except Exception:
+        cantidad = 1
+
+    if cantidad <= 1:
+        return "1 mes"
+    return f"{cantidad} meses"
+
+
+def limpiar_placa(valor):
+    return str(valor or "").replace(" ", "").replace("-", "").upper().strip()
+
+
+def configurar_treeview():
+    style = ttk.Style()
+    try:
+        style.theme_use("default")
+    except Exception:
+        pass
+
+    style.configure(
+        "Reportes.Treeview",
+        background="white",
+        foreground="#111827",
+        rowheight=28,
+        fieldbackground="white",
+        borderwidth=0,
+        relief="flat",
+        font=("Arial", 10),
+    )
+
+    style.configure(
+        "Reportes.Treeview.Heading",
+        background="#f3f4f6",
+        foreground="#111827",
+        font=("Arial", 10, "bold"),
+        borderwidth=0,
+        relief="flat",
+        padding=(5, 8),
+    )
+
+    style.map(
+        "Reportes.Treeview",
+        background=[("selected", "#e5e7eb")],
+        foreground=[("selected", "#111827")],
+    )
+
+
 class ReportsView:
     def __init__(self, parent):
         self.parent = parent
@@ -20,18 +266,22 @@ class ReportsView:
         self.current_rows = []
 
     def build(self):
+        configurar_treeview()
         self.build_filters()
         self.build_table()
         self.build_footer()
         self.load_reports()
 
+    # =====================================================
+    # INTERFAZ
+    # =====================================================
     def build_filters(self):
         filters_frame = tk.Frame(self.parent, bg="white")
         filters_frame.pack(fill="x", padx=15, pady=15)
 
         tk.Label(
             filters_frame,
-            text="Desde (YYYY-MM-DD):",
+            text="Desde (DD/MM/YYYY):",
             font=("Arial", 10, "bold"),
             bg="white",
             fg="#111827"
@@ -42,7 +292,7 @@ class ReportsView:
 
         tk.Label(
             filters_frame,
-            text="Hasta (YYYY-MM-DD):",
+            text="Hasta (DD/MM/YYYY):",
             font=("Arial", 10, "bold"),
             bg="white",
             fg="#111827"
@@ -67,9 +317,9 @@ class ReportsView:
             filters_frame,
             text="Buscar",
             font=("Arial", 10, "bold"),
-            bg="#2563eb",
+            bg="#111827",
             fg="white",
-            activebackground="#1d4ed8",
+            activebackground="#374151",
             activeforeground="white",
             bd=0,
             relief="flat",
@@ -119,47 +369,45 @@ class ReportsView:
         table_frame.pack(fill="both", expand=True, padx=15, pady=(0, 10))
 
         columns = (
-            "id",
-            "placa",
-            "empleado",
-            "servicios",
-            "tiempo",
-            "fecha_ingreso",
-            "fecha_salida",
-            "monto_total"
+            "FechaPago",
+            "Placa(s)",
+            "Detalle",
+            "Tiempo",
+            "MetodoPago",
+            "Empleado",
+            "Total"
         )
 
-        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=18)
+        self.tree = ttk.Treeview(
+            table_frame,
+            columns=columns,
+            show="headings",
+            height=18,
+            style="Reportes.Treeview"
+        )
 
-        self.tree.heading("id", text="ID")
-        self.tree.heading("placa", text="Placa")
-        self.tree.heading("empleado", text="Empleado")
-        self.tree.heading("servicios", text="Servicios")
-        self.tree.heading("tiempo", text="Tiempo")
-        self.tree.heading("fecha_ingreso", text="Fecha ingreso")
-        self.tree.heading("fecha_salida", text="Fecha salida")
-        self.tree.heading("monto_total", text="Monto cobrado")
+        self.tree.heading("FechaPago", text="Fecha pago")
+        self.tree.heading("Placa(s)", text="Placa(s)")
+        self.tree.heading("Detalle", text="Detalle")
+        self.tree.heading("Tiempo", text="Tiempo")
+        self.tree.heading("MetodoPago", text="Método")
+        self.tree.heading("Empleado", text="Empleado")
+        self.tree.heading("Total", text="Total")
 
-        self.tree.column("id", width=60, anchor="center", stretch=False)
-        self.tree.column("placa", width=110, anchor="center", stretch=False)
-        self.tree.column("empleado", width=180, anchor="w", stretch=False)
-        self.tree.column("servicios", width=260, anchor="w", stretch=False)
-        self.tree.column("tiempo", width=100, anchor="center", stretch=False)
-        self.tree.column("fecha_ingreso", width=150, anchor="center", stretch=False)
-        self.tree.column("fecha_salida", width=150, anchor="center", stretch=False)
-        self.tree.column("monto_total", width=120, anchor="center", stretch=False)
+        self.tree.column("FechaPago", width=150, anchor="center", stretch=False)
+        self.tree.column("Placa(s)", width=170, anchor="center", stretch=False)
+        self.tree.column("Detalle", width=360, anchor="w", stretch=True)
+        self.tree.column("Tiempo", width=120, anchor="center", stretch=False)
+        self.tree.column("MetodoPago", width=120, anchor="center", stretch=False)
+        self.tree.column("Empleado", width=180, anchor="w", stretch=True)
+        self.tree.column("Total", width=120, anchor="e", stretch=False)
 
         scrollbar_y = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
-        scrollbar_x = ttk.Scrollbar(table_frame, orient="horizontal", command=self.tree.xview)
 
-        self.tree.configure(
-            yscrollcommand=scrollbar_y.set,
-            xscrollcommand=scrollbar_x.set
-        )
+        self.tree.configure(yscrollcommand=scrollbar_y.set)
 
         self.tree.grid(row=0, column=0, sticky="nsew")
         scrollbar_y.grid(row=0, column=1, sticky="ns")
-        scrollbar_x.grid(row=1, column=0, sticky="ew")
 
         table_frame.grid_rowconfigure(0, weight=1)
         table_frame.grid_columnconfigure(0, weight=1)
@@ -170,27 +418,48 @@ class ReportsView:
 
         self.total_label = tk.Label(
             footer,
-            text="Total generado: Bs 0.00",
+            text="Total: Bs 0.00",
             font=("Arial", 12, "bold"),
             bg="white",
             fg="#111827"
         )
         self.total_label.pack(side="right")
 
+    # =====================================================
+    # FILTROS
+    # =====================================================
     def clear_filters(self):
         self.entry_from.delete(0, tk.END)
         self.entry_to.delete(0, tk.END)
         self.entry_plate.delete(0, tk.END)
         self.load_reports()
 
-    def validate_date(self, value):
-        if not value:
-            return True
-        try:
-            datetime.strptime(value, "%Y-%m-%d")
-            return True
-        except ValueError:
-            return False
+    def validar_rango_fechas(self, date_from_text, date_to_text):
+        date_from_bd = convertir_fecha_busqueda_a_bd(date_from_text)
+        date_to_bd = convertir_fecha_busqueda_a_bd(date_to_text)
+
+        if date_from_text and date_from_bd is None:
+            messagebox.showwarning(
+                "Fecha inválida",
+                "La fecha 'Desde' debe estar en formato DD/MM/YYYY.\nEjemplo: 29/04/2026"
+            )
+            return None, None, False
+
+        if date_to_text and date_to_bd is None:
+            messagebox.showwarning(
+                "Fecha inválida",
+                "La fecha 'Hasta' debe estar en formato DD/MM/YYYY.\nEjemplo: 29/04/2026"
+            )
+            return None, None, False
+
+        if date_from_bd and date_to_bd and date_from_bd > date_to_bd:
+            messagebox.showwarning(
+                "Rango inválido",
+                "La fecha 'Desde' no puede ser mayor que la fecha 'Hasta'."
+            )
+            return None, None, False
+
+        return date_from_bd, date_to_bd, True
 
     def format_duration(self, minutes):
         minutes = int(minutes or 0)
@@ -203,123 +472,293 @@ class ReportsView:
             return f"{horas} h"
         return f"{mins} min"
 
+    # =====================================================
+    # DETALLES
+    # =====================================================
+    def get_operation_services(self, cursor, operation_id):
+        if not es_id_valido(operation_id):
+            return "Parqueo"
+
+        cursor.execute("""
+            SELECT S.Nombre
+            FROM OPERACIONSERVICIO OS
+            INNER JOIN SERVICIO S ON OS.Servicio = S.Servicio
+            WHERE OS.Operacion = ?
+              AND OS.Estado != ?
+            ORDER BY S.Nombre ASC
+        """, (operation_id, ESTADO_OPERACION_SERVICIO_CANCELADO))
+
+        rows = cursor.fetchall()
+        names = [r["Nombre"] for r in rows]
+
+        if not names:
+            return "Parqueo"
+
+        return "Parqueo, " + ", ".join(names)
+
+    def get_operation_services_only(self, cursor, operation_id):
+        if not es_id_valido(operation_id):
+            return ""
+
+        cursor.execute("""
+            SELECT S.Nombre
+            FROM OPERACIONSERVICIO OS
+            INNER JOIN SERVICIO S ON OS.Servicio = S.Servicio
+            WHERE OS.Operacion = ?
+              AND OS.Estado != ?
+            ORDER BY S.Nombre ASC
+        """, (operation_id, ESTADO_OPERACION_SERVICIO_CANCELADO))
+
+        rows = cursor.fetchall()
+        return ", ".join([r["Nombre"] for r in rows])
+
+    def detalle_contrato(self, row):
+        codigo = row["CodigoContrato"] or (
+            f"Contrato #{row['ContratoReal']}" if es_id_valido(row["ContratoReal"]) else "Contrato"
+        )
+
+        clase = int(row["ClaseContrato"] or 0)
+        horas = row["HorasPermitidasDia"]
+
+        if clase == CLASE_CONTRATO_ESPECIAL:
+            return f"Contrato especial {codigo}"
+
+        if horas:
+            try:
+                return f"Contrato {int(horas)}h {codigo}"
+            except Exception:
+                return f"Contrato {horas}h {codigo}"
+
+        return f"Contrato {codigo}"
+
+    def tiempo_contrato(self, row):
+        duracion_mes = row["DuracionMes"]
+        if duracion_mes not in (None, "", 0, "0"):
+            return texto_meses(duracion_mes)
+
+        meses = calcular_meses_entre_fechas(
+            row["ContratoFechaInicio"],
+            row["ContratoFechaFin"]
+        )
+        return texto_meses(meses)
+
+    # =====================================================
+    # CARGA DE DATOS
+    # =====================================================
     def load_reports(self):
+        if not self.tree:
+            return
+
         for item in self.tree.get_children():
             self.tree.delete(item)
 
-        date_from = self.entry_from.get().strip()
-        date_to = self.entry_to.get().strip()
+        date_from_text = self.entry_from.get().strip()
+        date_to_text = self.entry_to.get().strip()
         plate = self.entry_plate.get().strip().upper()
 
-        if not self.validate_date(date_from):
-            messagebox.showwarning("Fecha inválida", "La fecha 'Desde' debe estar en formato YYYY-MM-DD.")
+        date_from, date_to, ok = self.validar_rango_fechas(date_from_text, date_to_text)
+        if not ok:
             return
-
-        if not self.validate_date(date_to):
-            messagebox.showwarning("Fecha inválida", "La fecha 'Hasta' debe estar en formato YYYY-MM-DD.")
-            return
-
-        if date_from and date_to:
-            if date_from > date_to:
-                messagebox.showwarning("Rango inválido", "La fecha 'Desde' no puede ser mayor que la fecha 'Hasta'.")
-                return
 
         conn = get_connection()
         cursor = conn.cursor()
 
-        query = """
-            SELECT
-                o.id,
-                v.placa,
-                u.nombre,
-                o.minutos_estadia,
-                o.fecha_ingreso,
-                o.fecha_salida,
-                o.monto_total
-            FROM operaciones o
-            INNER JOIN vehiculos v ON o.vehiculo_id = v.id
-            LEFT JOIN usuarios u ON o.usuario_salida_id = u.id
-            WHERE o.estado = 'finalizado'
-        """
-        params = []
+        try:
+            pago_tiene_contrato = columna_existe(cursor, "PAGO", "Contrato")
+            existe_contrato_vehiculo = tabla_existe(cursor, "CONTRATOVEHICULO")
 
-        if date_from:
-            query += " AND date(o.fecha_salida) >= date(?)"
-            params.append(date_from)
+            pago_contrato_select = "P.Contrato AS PagoContrato," if pago_tiene_contrato else "NULL AS PagoContrato,"
+            pago_contrato_join = "CD.Contrato = P.Contrato" if pago_tiene_contrato else "1 = 0"
 
-        if date_to:
-            query += " AND date(o.fecha_salida) <= date(?)"
-            params.append(date_to)
+            query = f"""
+                SELECT
+                    P.Pago,
+                    P.Operacion AS PagoOperacion,
+                    {pago_contrato_select}
+                    P.FechaPago,
+                    P.MetodoPago,
+                    P.Monto AS MontoPago,
+                    P.Estado AS EstadoPago,
 
-        if plate:
-            query += " AND REPLACE(UPPER(v.placa), ' ', '') LIKE ?"
-            params.append(f"%{plate.replace(' ', '')}%")
+                    O.Operacion AS OperacionReal,
+                    O.CodigoOperacion,
+                    O.Contrato AS OperacionContrato,
+                    O.TipoOperacion,
+                    O.MinutosEstadia,
+                    O.FechaIngreso,
+                    O.FechaSalida,
+                    O.MontoParqueo,
+                    O.MontoServicios,
+                    O.MontoTotal,
 
-        query += " ORDER BY o.fecha_salida DESC"
+                    COALESCE(CO.Contrato, CD.Contrato) AS ContratoReal,
+                    COALESCE(CO.CodigoContrato, CD.CodigoContrato) AS CodigoContrato,
+                    COALESCE(CO.MontoContrato, CD.MontoContrato) AS MontoContrato,
+                    COALESCE(CO.DuracionMes, CD.DuracionMes) AS DuracionMes,
+                    COALESCE(CO.ClaseContrato, CD.ClaseContrato) AS ClaseContrato,
+                    COALESCE(CO.HorasPermitidasDia, CD.HorasPermitidasDia) AS HorasPermitidasDia,
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
+                    COALESCE(CO.FechaInicio, CD.FechaInicio) AS ContratoFechaInicio,
+                    COALESCE(CO.FechaFin, CD.FechaFin) AS ContratoFechaFin,
 
-        self.current_rows = []
-        total_generated = 0.0
+                    V.Placa,
 
-        for row in rows:
-            operation_id = row[0]
-            placa = row[1] or ""
-            empleado = row[2] if row[2] else "-"
-            minutos = int(row[3] or 0)
-            fecha_ingreso = row[4] or ""
-            fecha_salida = row[5] or ""
-            monto_total = float(row[6] or 0)
+                    U.Nombre AS Empleado
+                FROM PAGO P
+                LEFT JOIN OPERACION O
+                       ON O.Operacion = P.Operacion
 
-            tiempo = self.format_duration(minutos)
-            servicios = self.get_operation_services(cursor, operation_id)
+                LEFT JOIN CONTRATO CO
+                       ON CO.Contrato = O.Contrato
 
-            view_row = (
-                operation_id,
-                placa,
-                empleado,
-                servicios,
-                tiempo,
-                fecha_ingreso,
-                fecha_salida,
-                f"Bs {monto_total:.2f}"
-            )
+                LEFT JOIN CONTRATO CD
+                       ON {pago_contrato_join}
+                      AND O.Operacion IS NULL
 
-            self.current_rows.append({
-                "id": operation_id,
-                "placa": placa,
-                "empleado": empleado,
-                "servicios": servicios,
-                "tiempo": tiempo,
-                "minutos": minutos,
-                "fecha_ingreso": fecha_ingreso,
-                "fecha_salida": fecha_salida,
-                "monto_total": monto_total
-            })
+                LEFT JOIN VEHICULO V
+                       ON V.Vehiculo = COALESCE(O.Vehiculo, CO.Vehiculo, CD.Vehiculo)
 
-            self.tree.insert("", "end", values=view_row)
-            total_generated += monto_total
+                LEFT JOIN USUARIO U
+                       ON U.Usuario = COALESCE(O.UsuarioSalida, O.UsuarioIngreso, P.Usuario)
 
-        conn.close()
+                WHERE P.Estado = ?
+            """
 
-        self.total_label.config(text=f"Total generado: Bs {total_generated:.2f}")
+            params = [ESTADO_PAGO_REGISTRADO]
 
-    def get_operation_services(self, cursor, operation_id):
-        cursor.execute("""
-            SELECT s.nombre
-            FROM operacion_servicios os
-            INNER JOIN servicios s ON os.servicio_id = s.id
-            WHERE os.operacion_id = ? AND os.estado != 'cancelado'
-            ORDER BY s.nombre ASC
-        """, (operation_id,))
-        rows = cursor.fetchall()
+            if date_from:
+                query += " AND date(P.FechaPago) >= date(?)"
+                params.append(date_from)
 
-        names = [r[0] for r in rows]
-        if not names:
-            return "Parqueo"
-        return "Parqueo, " + ", ".join(names)
+            if date_to:
+                query += " AND date(P.FechaPago) <= date(?)"
+                params.append(date_to)
 
+            if plate:
+                placa_limpia = limpiar_placa(plate)
+
+                if existe_contrato_vehiculo:
+                    query += """
+                        AND (
+                            REPLACE(REPLACE(UPPER(COALESCE(V.Placa, '')), ' ', ''), '-', '') LIKE ?
+                            OR EXISTS (
+                                SELECT 1
+                                FROM CONTRATOVEHICULO CVF
+                                INNER JOIN VEHICULO VF ON VF.Vehiculo = CVF.Vehiculo
+                                WHERE CVF.Contrato = COALESCE(CO.Contrato, CD.Contrato)
+                                  AND CVF.Estado = 1
+                                  AND REPLACE(REPLACE(UPPER(COALESCE(VF.Placa, '')), ' ', ''), '-', '') LIKE ?
+                            )
+                        )
+                    """
+                    params.extend([f"%{placa_limpia}%", f"%{placa_limpia}%"])
+                else:
+                    query += """
+                        AND REPLACE(REPLACE(UPPER(COALESCE(V.Placa, '')), ' ', ''), '-', '') LIKE ?
+                    """
+                    params.append(f"%{placa_limpia}%")
+
+            query += " ORDER BY P.FechaPago DESC, P.Pago DESC"
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+            self.current_rows = []
+            total_general = 0.0
+
+            for row in rows:
+                operation_id = row["OperacionReal"]
+                contrato_id = row["ContratoReal"]
+
+                empleado = row["Empleado"] if row["Empleado"] else "-"
+
+                tipo_operacion_bd = int(row["TipoOperacion"] or TIPO_OPERACION_NORMAL)
+                pago_contrato_directo = es_id_valido(row["PagoContrato"]) if pago_tiene_contrato else False
+                operacion_con_contrato = (
+                    es_id_valido(operation_id)
+                    and tipo_operacion_bd == TIPO_OPERACION_CONTRATO
+                    and es_id_valido(contrato_id)
+                )
+
+                metodo_pago = nombre_metodo_pago(row["MetodoPago"])
+                fecha_pago = formatear_fecha(row["FechaPago"])
+
+                monto_pago = convertir_float(row["MontoPago"])
+                monto_parqueo_bd = convertir_float(row["MontoParqueo"])
+                monto_servicios = convertir_float(row["MontoServicios"])
+                monto_total_bd = convertir_float(row["MontoTotal"])
+
+                if pago_contrato_directo:
+                    # Pago creado directamente desde Contratos / payment.py.
+                    placa = placas_contrato(cursor, contrato_id, row["Placa"] or "-")
+                    detalle = self.detalle_contrato(row)
+                    tiempo = self.tiempo_contrato(row)
+                    total = monto_pago
+
+                elif operacion_con_contrato:
+                    # Operación de servicios asociada a un contrato.
+                    # Aquí se muestra la placa específica que ingresó al garaje,
+                    # no necesariamente todas las placas del contrato.
+                    placa = row["Placa"] or "-"
+
+                    servicios = self.get_operation_services_only(cursor, operation_id)
+                    codigo = row["CodigoContrato"] or ""
+                    if servicios:
+                        detalle = f"Servicios con contrato {codigo}: {servicios}".strip()
+                    else:
+                        detalle = f"Servicios con contrato {codigo}".strip()
+
+                    minutos = int(row["MinutosEstadia"] or 0)
+                    tiempo = self.format_duration(minutos)
+                    total = monto_pago if monto_pago > 0 else monto_servicios
+
+                else:
+                    # Parqueo normal.
+                    placa = row["Placa"] or "-"
+                    servicios = self.get_operation_services(cursor, operation_id)
+                    detalle = servicios
+
+                    minutos = int(row["MinutosEstadia"] or 0)
+                    tiempo = self.format_duration(minutos)
+
+                    if monto_parqueo_bd <= 0 and monto_servicios <= 0:
+                        total = monto_total_bd if monto_total_bd > 0 else monto_pago
+                    else:
+                        total = monto_parqueo_bd + monto_servicios
+
+                view_row = (
+                    fecha_pago,
+                    placa,
+                    detalle,
+                    tiempo,
+                    metodo_pago,
+                    empleado,
+                    f"Bs {total:.2f}"
+                )
+
+                self.current_rows.append({
+                    "fecha_pago": fecha_pago,
+                    "placa": placa,
+                    "detalle": detalle,
+                    "tiempo": tiempo,
+                    "metodo_pago": metodo_pago,
+                    "empleado": empleado,
+                    "total": total
+                })
+
+                self.tree.insert("", "end", values=view_row)
+                total_general += total
+
+            self.total_label.config(text=f"Total: Bs {total_general:.2f}")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"No se pudieron cargar los reportes.\n{str(e)}")
+        finally:
+            conn.close()
+
+    # =====================================================
+    # EXPORTAR EXCEL
+    # =====================================================
     def export_excel(self):
         if not self.current_rows:
             messagebox.showwarning("Sin datos", "No hay datos para exportar.")
@@ -341,14 +780,13 @@ class ReportsView:
             sheet.title = "Reportes"
 
             headers = [
-                "ID",
-                "Placa",
-                "Empleado",
-                "Servicios",
+                "Fecha pago",
+                "Placa(s)",
+                "Detalle",
                 "Tiempo",
-                "Fecha ingreso",
-                "Fecha salida",
-                "Monto cobrado"
+                "Método",
+                "Empleado",
+                "Total"
             ]
             sheet.append(headers)
 
@@ -359,32 +797,33 @@ class ReportsView:
 
             for row in self.current_rows:
                 sheet.append([
-                    row["id"],
+                    row["fecha_pago"],
                     row["placa"],
-                    row["empleado"],
-                    row["servicios"],
+                    row["detalle"],
                     row["tiempo"],
-                    row["fecha_ingreso"],
-                    row["fecha_salida"],
-                    row["monto_total"]
+                    row["metodo_pago"],
+                    row["empleado"],
+                    row["total"]
                 ])
 
-            total = sum(row["monto_total"] for row in self.current_rows)
+            total_general = sum(row["total"] for row in self.current_rows)
+
             last_row = sheet.max_row + 2
-            sheet.cell(row=last_row, column=7, value="Total generado")
+            sheet.cell(row=last_row, column=6, value="Total")
+            sheet.cell(row=last_row, column=6).font = Font(bold=True)
+            sheet.cell(row=last_row, column=6).alignment = Alignment(horizontal="right")
+
+            sheet.cell(row=last_row, column=7, value=total_general)
             sheet.cell(row=last_row, column=7).font = Font(bold=True)
-            sheet.cell(row=last_row, column=8, value=total)
-            sheet.cell(row=last_row, column=8).font = Font(bold=True)
 
             widths = {
-                "A": 10,
-                "B": 14,
-                "C": 22,
-                "D": 35,
-                "E": 14,
-                "F": 22,
-                "G": 22,
-                "H": 16
+                "A": 22,
+                "B": 24,
+                "C": 44,
+                "D": 16,
+                "E": 16,
+                "F": 24,
+                "G": 16
             }
 
             for col_letter, width in widths.items():
@@ -392,7 +831,10 @@ class ReportsView:
 
             workbook.save(file_path)
 
-            messagebox.showinfo("Exportación exitosa", "El reporte se exportó correctamente a Excel.")
+            messagebox.showinfo(
+                "Exportación exitosa",
+                "El reporte se exportó correctamente a Excel."
+            )
 
         except Exception as e:
             messagebox.showerror("Error", f"No se pudo exportar el archivo.\n{str(e)}")

@@ -1,5 +1,5 @@
-import sqlite3
 import os
+import sqlite3
 import sys
 
 
@@ -16,6 +16,7 @@ def get_base_dir():
     """
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
+
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -39,9 +40,13 @@ def get_db_path():
 def get_connection():
     """
     Crea y devuelve una conexión a SQLite.
-    Activa soporte para foreign keys.
+    Activa soporte para foreign keys y permite acceder
+    a las columnas por nombre.
     """
     db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
+
+    conn = sqlite3.connect(db_path, timeout=10)
     conn.execute("PRAGMA foreign_keys = ON;")
+    conn.row_factory = sqlite3.Row
+
     return conn

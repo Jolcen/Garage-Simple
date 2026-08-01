@@ -5,6 +5,66 @@ from datetime import datetime
 from database.db import get_connection
 
 
+# =========================================================
+# CATÁLOGOS
+# =========================================================
+ESTADO_INACTIVO = 0
+ESTADO_ACTIVO = 1
+
+
+def formatear_fecha(valor):
+    """
+    Convierte fechas de BD a formato visual DD/MM/YYYY o DD/MM/YYYY HH:MM.
+    """
+    if not valor:
+        return ""
+
+    texto = str(valor).strip()
+
+    formatos = [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M",
+        "%d/%m/%Y",
+    ]
+
+    for formato in formatos:
+        try:
+            if "%H" in formato:
+                fecha = datetime.strptime(texto[:19], formato)
+                return fecha.strftime("%d/%m/%Y %H:%M")
+
+            fecha = datetime.strptime(texto[:10], formato)
+            return fecha.strftime("%d/%m/%Y")
+        except Exception:
+            pass
+
+    if "-" in texto and len(texto) >= 10:
+        partes = texto[:10].split("-")
+        if len(partes) == 3:
+            resto = texto[10:16]
+            return f"{partes[2]}/{partes[1]}/{partes[0]}{resto}"
+
+    return texto
+
+
+def convertir_fecha_busqueda_a_bd(valor):
+    """
+    Convierte DD/MM/YYYY a YYYY-MM-DD para buscar en SQLite.
+    """
+    valor = str(valor or "").strip()
+
+    if not valor:
+        return ""
+
+    try:
+        return datetime.strptime(valor, "%d/%m/%Y").strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
 class AuditLogView:
     def __init__(self, parent, user_data):
         self.parent = parent
@@ -62,7 +122,7 @@ class AuditLogView:
 
         tk.Label(
             filters_frame,
-            text="Desde (YYYY-MM-DD):",
+            text="Desde (DD/MM/YYYY):",
             font=("Arial", 10, "bold"),
             bg="white",
             fg="#111827"
@@ -73,7 +133,7 @@ class AuditLogView:
 
         tk.Label(
             filters_frame,
-            text="Hasta (YYYY-MM-DD):",
+            text="Hasta (DD/MM/YYYY):",
             font=("Arial", 10, "bold"),
             bg="white",
             fg="#111827"
@@ -119,32 +179,32 @@ class AuditLogView:
         table_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
 
         columns = (
-            "id",
-            "usuario",
-            "accion",
-            "tabla_afectada",
-            "registro_id",
-            "descripcion",
-            "fecha_evento"
+            "Bitacora",
+            "UsuarioNombre",
+            "Accion",
+            "TablaAfectada",
+            "RegistroAfectado",
+            "Descripcion",
+            "FechaEvento"
         )
 
         self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=18)
 
-        self.tree.heading("id", text="ID")
-        self.tree.heading("usuario", text="Usuario")
-        self.tree.heading("accion", text="Acción")
-        self.tree.heading("tabla_afectada", text="Tabla")
-        self.tree.heading("registro_id", text="Registro")
-        self.tree.heading("descripcion", text="Descripción")
-        self.tree.heading("fecha_evento", text="Fecha")
+        self.tree.heading("Bitacora", text="ID")
+        self.tree.heading("UsuarioNombre", text="Usuario")
+        self.tree.heading("Accion", text="Acción")
+        self.tree.heading("TablaAfectada", text="Tabla")
+        self.tree.heading("RegistroAfectado", text="Registro")
+        self.tree.heading("Descripcion", text="Descripción")
+        self.tree.heading("FechaEvento", text="Fecha")
 
-        self.tree.column("id", width=55, anchor="center", stretch=False)
-        self.tree.column("usuario", width=150, anchor="w", stretch=False)
-        self.tree.column("accion", width=180, anchor="center", stretch=False)
-        self.tree.column("tabla_afectada", width=110, anchor="center", stretch=False)
-        self.tree.column("registro_id", width=80, anchor="center", stretch=False)
-        self.tree.column("descripcion", width=420, anchor="w", stretch=False)
-        self.tree.column("fecha_evento", width=160, anchor="center", stretch=False)
+        self.tree.column("Bitacora", width=55, anchor="center", stretch=False)
+        self.tree.column("UsuarioNombre", width=150, anchor="w", stretch=False)
+        self.tree.column("Accion", width=180, anchor="center", stretch=False)
+        self.tree.column("TablaAfectada", width=110, anchor="center", stretch=False)
+        self.tree.column("RegistroAfectado", width=80, anchor="center", stretch=False)
+        self.tree.column("Descripcion", width=420, anchor="w", stretch=False)
+        self.tree.column("FechaEvento", width=160, anchor="center", stretch=False)
 
         scrollbar_y = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
         scrollbar_x = ttk.Scrollbar(table_frame, orient="horizontal", command=self.tree.xview)
@@ -167,90 +227,111 @@ class AuditLogView:
         self.entry_to.delete(0, tk.END)
         self.load_logs()
 
-    def validate_date(self, value):
-        if not value:
-            return True
-        try:
-            datetime.strptime(value, "%Y-%m-%d")
-            return True
-        except ValueError:
-            return False
+    def validar_rango_fechas(self, date_from_text, date_to_text):
+        date_from_bd = convertir_fecha_busqueda_a_bd(date_from_text)
+        date_to_bd = convertir_fecha_busqueda_a_bd(date_to_text)
+
+        if date_from_text and date_from_bd is None:
+            messagebox.showwarning(
+                "Fecha inválida",
+                "La fecha 'Desde' debe estar en formato DD/MM/YYYY.\nEjemplo: 29/04/2026"
+            )
+            return None, None, False
+
+        if date_to_text and date_to_bd is None:
+            messagebox.showwarning(
+                "Fecha inválida",
+                "La fecha 'Hasta' debe estar en formato DD/MM/YYYY.\nEjemplo: 29/04/2026"
+            )
+            return None, None, False
+
+        if date_from_bd and date_to_bd and date_from_bd > date_to_bd:
+            messagebox.showwarning(
+                "Rango inválido",
+                "La fecha 'Desde' no puede ser mayor que la fecha 'Hasta'."
+            )
+            return None, None, False
+
+        return date_from_bd, date_to_bd, True
 
     def load_logs(self):
+        if not self.tree:
+            return
+
         for item in self.tree.get_children():
             self.tree.delete(item)
 
         search_value = self.search_entry.get().strip().upper() if self.search_entry else ""
-        date_from = self.entry_from.get().strip() if self.entry_from else ""
-        date_to = self.entry_to.get().strip() if self.entry_to else ""
+        date_from_text = self.entry_from.get().strip() if self.entry_from else ""
+        date_to_text = self.entry_to.get().strip() if self.entry_to else ""
 
-        if not self.validate_date(date_from):
-            messagebox.showwarning("Fecha inválida", "La fecha 'Desde' debe estar en formato YYYY-MM-DD.")
-            return
-
-        if not self.validate_date(date_to):
-            messagebox.showwarning("Fecha inválida", "La fecha 'Hasta' debe estar en formato YYYY-MM-DD.")
-            return
-
-        if date_from and date_to and date_from > date_to:
-            messagebox.showwarning("Rango inválido", "La fecha 'Desde' no puede ser mayor que la fecha 'Hasta'.")
+        date_from, date_to, ok = self.validar_rango_fechas(date_from_text, date_to_text)
+        if not ok:
             return
 
         conn = get_connection()
         cursor = conn.cursor()
 
-        query = """
-            SELECT
-                b.id,
-                u.nombre,
-                b.accion,
-                b.tabla_afectada,
-                b.registro_id,
-                b.descripcion,
-                b.fecha_evento
-            FROM bitacora b
-            LEFT JOIN usuarios u ON b.usuario_id = u.id
-            WHERE 1=1
-        """
-        params = []
-
-        if search_value:
-            query += """
-                AND (
-                    UPPER(IFNULL(u.nombre, '')) LIKE ?
-                    OR UPPER(IFNULL(b.accion, '')) LIKE ?
-                    OR UPPER(IFNULL(b.tabla_afectada, '')) LIKE ?
-                    OR UPPER(IFNULL(b.descripcion, '')) LIKE ?
-                )
+        try:
+            query = """
+                SELECT
+                    B.Bitacora,
+                    U.Nombre AS UsuarioNombre,
+                    B.Accion,
+                    B.TablaAfectada,
+                    B.RegistroAfectado,
+                    B.Descripcion,
+                    B.FechaEvento
+                FROM BITACORA B
+                LEFT JOIN USUARIO U ON B.Usuario = U.Usuario
+                WHERE B.Estado = ?
             """
-            like_value = f"%{search_value}%"
-            params.extend([like_value, like_value, like_value, like_value])
+            params = [ESTADO_ACTIVO]
 
-        if date_from:
-            query += " AND date(b.fecha_evento) >= date(?)"
-            params.append(date_from)
+            if search_value:
+                like_value = f"%{search_value}%"
+                query += """
+                    AND (
+                        UPPER(IFNULL(U.Nombre, '')) LIKE ?
+                        OR UPPER(IFNULL(B.Accion, '')) LIKE ?
+                        OR UPPER(IFNULL(B.TablaAfectada, '')) LIKE ?
+                        OR UPPER(IFNULL(B.Descripcion, '')) LIKE ?
+                    )
+                """
+                params.extend([like_value, like_value, like_value, like_value])
 
-        if date_to:
-            query += " AND date(b.fecha_evento) <= date(?)"
-            params.append(date_to)
+            if date_from:
+                query += " AND date(B.FechaEvento) >= date(?) "
+                params.append(date_from)
 
-        query += " ORDER BY b.fecha_evento DESC, b.id DESC"
+            if date_to:
+                query += " AND date(B.FechaEvento) <= date(?) "
+                params.append(date_to)
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
+            query += " ORDER BY B.FechaEvento DESC, B.Bitacora DESC "
 
-        for row in rows:
-            self.tree.insert(
-                "",
-                "end",
-                values=(
-                    row[0],
-                    row[1] if row[1] else "-",
-                    row[2] if row[2] else "",
-                    row[3] if row[3] else "",
-                    row[4] if row[4] is not None else "",
-                    row[5] if row[5] else "",
-                    row[6] if row[6] else ""
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+            for row in rows:
+                self.tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        row["Bitacora"],
+                        row["UsuarioNombre"] if row["UsuarioNombre"] else "-",
+                        row["Accion"] if row["Accion"] else "",
+                        row["TablaAfectada"] if row["TablaAfectada"] else "",
+                        row["RegistroAfectado"] if row["RegistroAfectado"] is not None else "",
+                        row["Descripcion"] if row["Descripcion"] else "",
+                        formatear_fecha(row["FechaEvento"])
+                    )
                 )
+
+        except Exception as e:
+            messagebox.showerror(
+                "Error",
+                f"No se pudo cargar la bitácora.\n{str(e)}"
             )
+        finally:
+            conn.close()

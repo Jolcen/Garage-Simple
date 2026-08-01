@@ -8,18 +8,24 @@ from modules.services import ServicesView
 from modules.reports import ReportsView
 from modules.users import UsersView
 from modules.audit_log import AuditLogView
+from modules.contracts import ContractsView
+from modules.configuration import ConfigurationView
 
 
 class DashboardWindow:
     def __init__(self, user_data):
-        self.user_data = user_data
+        self.user_data = user_data or {}
 
         self.root = tk.Tk()
         self.root.title("Sistema de Garaje")
         self.root.geometry("1366x768")
         self.root.minsize(1200, 700)
         self.root.configure(bg="#f3f4f6")
-        self.root.state("zoomed")
+
+        try:
+            self.root.state("zoomed")
+        except Exception:
+            pass
 
         self.content_frame = None
         self.title_label = None
@@ -30,6 +36,41 @@ class DashboardWindow:
 
         self.root.protocol("WM_DELETE_WINDOW", self.confirm_exit)
 
+    # =====================================================
+    # USUARIO / ROL
+    # =====================================================
+    def get_user_name(self):
+        return (
+            self.user_data.get("nombre")
+            or self.user_data.get("Nombre")
+            or self.user_data.get("NombreUsuario")
+            or self.user_data.get("usuario")
+            or "Usuario"
+        )
+
+    def get_user_role_text(self):
+        rol = (
+            self.user_data.get("rol")
+            or self.user_data.get("Rol")
+            or self.user_data.get("role")
+            or self.user_data.get("Role")
+            or "empleado"
+        )
+
+        if isinstance(rol, int):
+            return "admin" if rol == 1 else "empleado"
+
+        rol_texto = str(rol).strip().lower()
+        if rol_texto in ("1", "admin", "administrador"):
+            return "admin"
+        return "empleado"
+
+    def is_admin(self):
+        return self.get_user_role_text() == "admin"
+
+    # =====================================================
+    # UI PRINCIPAL
+    # =====================================================
     def build_ui(self):
         self.root.grid_rowconfigure(1, weight=1)
         self.root.grid_columnconfigure(1, weight=1)
@@ -54,7 +95,7 @@ class DashboardWindow:
 
         user_info = tk.Label(
             topbar,
-            text=f"{self.user_data['nombre']} | Rol: {self.user_data['rol']}",
+            text=f"{self.get_user_name()} | Rol: {self.get_user_role_text()}",
             bg="#1f2937",
             fg="white",
             font=("Arial", 11)
@@ -75,16 +116,20 @@ class DashboardWindow:
         )
         menu_title.pack(pady=(20, 15))
 
+        # Módulos visibles para empleado y admin.
         buttons = [
             ("Operaciones", lambda: self.show_module("Operaciones")),
             ("Vehículos / Clientes", lambda: self.show_module("Vehículos / Clientes")),
-            ("Reportes", lambda: self.show_module("Reportes")),
+            ("Contratos", lambda: self.show_module("Contratos")),
         ]
 
-        if self.user_data["rol"] == "admin":
+        # Módulos solo para administrador.
+        if self.is_admin():
             buttons.extend([
+                ("Reportes", lambda: self.show_module("Reportes")),
                 ("Tarifas", lambda: self.show_module("Tarifas")),
                 ("Servicios", lambda: self.show_module("Servicios")),
+                ("Configuración", lambda: self.show_module("Configuración")),
                 ("Usuarios", lambda: self.show_module("Usuarios")),
                 ("Bitácora", lambda: self.show_module("Bitácora")),
             ])
@@ -150,6 +195,9 @@ class DashboardWindow:
         self.content_frame.grid_rowconfigure(0, weight=1)
         self.content_frame.grid_columnconfigure(0, weight=1)
 
+    # =====================================================
+    # NAVEGACIÓN
+    # =====================================================
     def clear_content(self):
         for widget in self.content_frame.winfo_children():
             widget.destroy()
@@ -162,6 +210,23 @@ class DashboardWindow:
                 button.configure(bg="#1f2937")
 
     def show_module(self, module_name):
+        # Seguridad: empleado no puede abrir módulos administrativos aunque se llame manualmente.
+        admin_modules = {
+            "Reportes",
+            "Tarifas",
+            "Servicios",
+            "Configuración",
+            "Usuarios",
+            "Bitácora",
+        }
+
+        if module_name in admin_modules and not self.is_admin():
+            messagebox.showwarning(
+                "Acceso denegado",
+                "Este módulo solo está disponible para el administrador."
+            )
+            return
+
         self.clear_content()
         self.title_label.config(text=module_name)
         self.update_active_button(module_name)
@@ -170,12 +235,16 @@ class DashboardWindow:
             view = OperationsView(self.content_frame, self.user_data)
         elif module_name == "Vehículos / Clientes":
             view = VehiclesCustomersView(self.content_frame, self.user_data)
+        elif module_name == "Contratos":
+            view = ContractsView(self.content_frame, self.user_data)
         elif module_name == "Tarifas":
             view = RatesView(self.content_frame, self.user_data)
         elif module_name == "Servicios":
             view = ServicesView(self.content_frame, self.user_data)
         elif module_name == "Reportes":
             view = ReportsView(self.content_frame)
+        elif module_name == "Configuración":
+            view = ConfigurationView(self.content_frame, self.user_data)
         elif module_name == "Usuarios":
             view = UsersView(self.content_frame, self.user_data)
         elif module_name == "Bitácora":
@@ -183,8 +252,14 @@ class DashboardWindow:
         else:
             return
 
-        view.build()
+        if hasattr(view, "build"):
+            view.build()
+        else:
+            view.pack(fill="both", expand=True)
 
+    # =====================================================
+    # SESIÓN / SALIDA
+    # =====================================================
     def logout(self):
         confirm = messagebox.askyesno("Cerrar sesión", "¿Desea cerrar sesión?")
         if not confirm:

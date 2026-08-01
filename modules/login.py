@@ -1,3 +1,4 @@
+import os
 import tkinter as tk
 from tkinter import messagebox
 
@@ -5,25 +6,36 @@ from database.db import get_connection
 from modules.dashboard import DashboardWindow
 
 
+ROLES_USUARIO = {
+    1: "admin",
+    2: "empleado",
+}
+
+
 class LoginWindow:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Inicio de Sesión")
-        self.root.geometry("460x430")
+        self.root.geometry("460x500")
         self.root.resizable(False, False)
-        self.root.configure(bg="#f3f4f6")
+        self.root.configure(bg="#facc15")
 
         self.entry_usuario = None
         self.entry_password = None
         self.show_password_var = tk.BooleanVar(value=False)
+        self.logo_image = None
 
         self.build_ui()
         self.center_window()
 
+    def get_logo_path(self):
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(base_dir, "static", "logo.png")
+
     def center_window(self):
         self.root.update_idletasks()
         width = 460
-        height = 430
+        height = 500
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
 
@@ -33,23 +45,57 @@ class LoginWindow:
         self.root.geometry(f"{width}x{height}+{x}+{y}")
 
     def build_ui(self):
+        top_frame = tk.Frame(self.root, bg="#facc15")
+        top_frame.pack(pady=(0, 0))
+
+        logo_path = self.get_logo_path()
+        if os.path.exists(logo_path):
+            try:
+                self.logo_image = tk.PhotoImage(file=logo_path)
+                self.logo_image = self.logo_image.subsample(6, 6)
+
+                logo_label = tk.Label(
+                    top_frame,
+                    image=self.logo_image,
+                    bg="#facc15"
+                )
+                logo_label.pack(pady=(0, 2))
+            except Exception:
+                fallback_logo = tk.Label(
+                    top_frame,
+                    text="CAR PARK",
+                    font=("Arial", 20, "bold"),
+                    bg="#facc15",
+                    fg="#1e3a8a"
+                )
+                fallback_logo.pack(pady=(0, 2))
+        else:
+            fallback_logo = tk.Label(
+                top_frame,
+                text="CAR PARK",
+                font=("Arial", 20, "bold"),
+                bg="#facc15",
+                fg="#1e3a8a"
+            )
+            fallback_logo.pack(pady=(0, 2))
+
         title_label = tk.Label(
             self.root,
             text="Sistema Carpark",
             font=("Arial", 18, "bold"),
-            bg="#f3f4f6",
+            bg="#facc15",
             fg="#111827"
         )
-        title_label.pack(pady=(28, 8))
+        title_label.pack(pady=(0, 2))
 
         subtitle_label = tk.Label(
             self.root,
             text="Iniciar sesión",
             font=("Arial", 11),
-            bg="#f3f4f6",
-            fg="#4b5563"
+            bg="#facc15",
+            fg="#374151"
         )
-        subtitle_label.pack(pady=(0, 18))
+        subtitle_label.pack(pady=(0, 6))
 
         card = tk.Frame(
             self.root,
@@ -84,7 +130,7 @@ class LoginWindow:
         password_label.pack(anchor="w", pady=(0, 5))
 
         password_frame = tk.Frame(card, bg="white")
-        password_frame.pack(fill="x", pady=(0, 8))
+        password_frame.pack(fill="x", pady=(0, 10))
 
         self.entry_password = tk.Entry(password_frame, font=("Arial", 11), show="*")
         self.entry_password.pack(side="left", fill="x", expand=True)
@@ -97,8 +143,8 @@ class LoginWindow:
             offvalue=False,
             command=self.toggle_password_visibility,
             bg="white",
-            font=("Arial", 10),
-            activebackground="white"
+            activebackground="white",
+            font=("Arial", 10)
         )
         toggle_button.pack(side="left", padx=(10, 0))
 
@@ -109,17 +155,17 @@ class LoginWindow:
             bg="white",
             fg="#6b7280"
         )
-        helper_label.pack(anchor="w", pady=(0, 4))
+        helper_label.pack(anchor="w", pady=(2, 0))
 
-        buttons_frame = tk.Frame(self.root, bg="#f3f4f6")
-        buttons_frame.pack(pady=20)
+        buttons_frame = tk.Frame(self.root, bg="#facc15")
+        buttons_frame.pack(pady=18)
 
         login_button = tk.Button(
             buttons_frame,
             text="Ingresar",
             font=("Arial", 11, "bold"),
-            width=16,
-            bg="#2563eb",
+            width=15,
+            bg="#1e3a8a",
             fg="white",
             activebackground="#1d4ed8",
             activeforeground="white",
@@ -134,7 +180,7 @@ class LoginWindow:
             buttons_frame,
             text="Salir",
             font=("Arial", 11, "bold"),
-            width=16,
+            width=15,
             bg="#dc2626",
             fg="white",
             activebackground="#b91c1c",
@@ -157,32 +203,58 @@ class LoginWindow:
         else:
             self.entry_password.config(show="*")
 
-    def authenticate_user(self, usuario, password):
+    def authenticate_user(self, nombre_usuario, password):
         conn = None
         try:
             conn = get_connection()
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT id, nombre, usuario, rol, estado
-                FROM usuarios
-                WHERE usuario = ? AND password = ?
-            """, (usuario, password))
+                SELECT
+                    Usuario,
+                    Nombre,
+                    NombreUsuario,
+                    Password,
+                    Rol,
+                    Estado
+                FROM USUARIO
+                WHERE NombreUsuario = ?
+            """, (nombre_usuario,))
 
             user = cursor.fetchone()
 
             if not user:
                 return None
 
-            if user[4] != "activo":
+            if user["Password"] != password:
+                return None
+
+            if user["Estado"] != 1:
                 return "inactive"
 
+            rol_texto = ROLES_USUARIO.get(user["Rol"], "empleado")
+
+            cursor.execute("""
+                UPDATE USUARIO
+                SET
+                    UltimoAcceso = datetime('now', 'localtime'),
+                    Usr = ?,
+                    UsrFecha = date('now', 'localtime'),
+                    UsrHora = time('now', 'localtime'),
+                    FechaModificacion = datetime('now', 'localtime')
+                WHERE Usuario = ?
+            """, (user["Usuario"], user["Usuario"]))
+
+            conn.commit()
+
             return {
-                "id": user[0],
-                "nombre": user[1],
-                "usuario": user[2],
-                "rol": user[3],
-                "estado": user[4]
+                "id": user["Usuario"],
+                "Usuario": user["Usuario"],
+                "nombre": user["Nombre"],
+                "usuario": user["NombreUsuario"],
+                "rol": rol_texto,
+                "rol_id": user["Rol"],
+                "estado": user["Estado"],
             }
 
         except Exception as e:
@@ -194,14 +266,14 @@ class LoginWindow:
                 conn.close()
 
     def login(self):
-        usuario = self.entry_usuario.get().strip()
+        nombre_usuario = self.entry_usuario.get().strip()
         password = self.entry_password.get().strip()
 
-        if not usuario or not password:
+        if not nombre_usuario or not password:
             messagebox.showwarning("Campos requeridos", "Ingrese usuario y contraseña.")
             return
 
-        result = self.authenticate_user(usuario, password)
+        result = self.authenticate_user(nombre_usuario, password)
 
         if result == "db_error":
             return

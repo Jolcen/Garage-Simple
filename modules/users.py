@@ -1,10 +1,46 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from datetime import datetime
 
 from database.db import get_connection
 
 
+# =========================================================
+# CATÁLOGOS
+# =========================================================
+ESTADO_INACTIVO = 0
+ESTADO_ACTIVO = 1
+
+ROL_ADMIN = 1
+ROL_EMPLEADO = 2
+
+ROL_TEXTO = {
+    ROL_ADMIN: "admin",
+    ROL_EMPLEADO: "empleado",
+}
+
+ESTADO_TEXTO = {
+    ESTADO_ACTIVO: "activo",
+    ESTADO_INACTIVO: "inactivo",
+}
+
+
+# =========================================================
+# UTILIDADES
+# =========================================================
+def obtener_usuario_actual_id(user_data):
+    if not user_data:
+        return 0
+    return user_data.get("Usuario") or user_data.get("id") or 0
+
+
+def ahora_texto():
+    from datetime import datetime
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+# =========================================================
+# VISTA PRINCIPAL
+# =========================================================
 class UsersView:
     def __init__(self, parent, user_data):
         self.parent = parent
@@ -94,25 +130,25 @@ class UsersView:
         table_frame = tk.Frame(self.parent, bg="white")
         table_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
 
-        columns = ("id", "nombre", "usuario", "rol", "estado", "fecha_creacion", "acciones")
+        columns = ("Usuario", "Nombre", "NombreUsuario", "Rol", "Estado", "FechaCreacion", "Acciones")
 
         self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=18)
 
-        self.tree.heading("id", text="ID")
-        self.tree.heading("nombre", text="Nombre")
-        self.tree.heading("usuario", text="Usuario")
-        self.tree.heading("rol", text="Rol")
-        self.tree.heading("estado", text="Estado")
-        self.tree.heading("fecha_creacion", text="Fecha creación")
-        self.tree.heading("acciones", text="Acciones")
+        self.tree.heading("Usuario", text="ID")
+        self.tree.heading("Nombre", text="Nombre")
+        self.tree.heading("NombreUsuario", text="Usuario")
+        self.tree.heading("Rol", text="Rol")
+        self.tree.heading("Estado", text="Estado")
+        self.tree.heading("FechaCreacion", text="Fecha creación")
+        self.tree.heading("Acciones", text="Acciones")
 
-        self.tree.column("id", width=60, anchor="center", stretch=False)
-        self.tree.column("nombre", width=240, anchor="w", stretch=False)
-        self.tree.column("usuario", width=140, anchor="center", stretch=False)
-        self.tree.column("rol", width=100, anchor="center", stretch=False)
-        self.tree.column("estado", width=100, anchor="center", stretch=False)
-        self.tree.column("fecha_creacion", width=160, anchor="center", stretch=False)
-        self.tree.column("acciones", width=120, anchor="center", stretch=False)
+        self.tree.column("Usuario", width=60, anchor="center", stretch=False)
+        self.tree.column("Nombre", width=240, anchor="w", stretch=False)
+        self.tree.column("NombreUsuario", width=140, anchor="center", stretch=False)
+        self.tree.column("Rol", width=100, anchor="center", stretch=False)
+        self.tree.column("Estado", width=100, anchor="center", stretch=False)
+        self.tree.column("FechaCreacion", width=160, anchor="center", stretch=False)
+        self.tree.column("Acciones", width=120, anchor="center", stretch=False)
 
         scrollbar_y = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
         scrollbar_x = ttk.Scrollbar(table_frame, orient="horizontal", command=self.tree.xview)
@@ -141,18 +177,23 @@ class UsersView:
         cursor = conn.cursor()
 
         query = """
-            SELECT id, nombre, usuario, rol, estado, fecha_creacion
-            FROM usuarios
-            WHERE 1=1
+            SELECT Usuario, Nombre, NombreUsuario, Rol, Estado, FechaCreacion
+            FROM USUARIO
+            WHERE 1 = 1
         """
         params = []
 
         if search_value:
-            query += " AND (UPPER(nombre) LIKE ? OR UPPER(usuario) LIKE ? OR UPPER(rol) LIKE ? OR UPPER(estado) LIKE ?)"
             like_value = f"%{search_value}%"
-            params.extend([like_value, like_value, like_value, like_value])
+            query += """
+                AND (
+                    UPPER(Nombre) LIKE ?
+                    OR UPPER(NombreUsuario) LIKE ?
+                )
+            """
+            params.extend([like_value, like_value])
 
-        query += " ORDER BY id ASC"
+        query += " ORDER BY Usuario ASC "
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -163,12 +204,12 @@ class UsersView:
                 "",
                 "end",
                 values=(
-                    row[0],
-                    row[1],
-                    row[2],
-                    row[3],
-                    row[4],
-                    row[5],
+                    row["Usuario"],
+                    row["Nombre"],
+                    row["NombreUsuario"],
+                    ROL_TEXTO.get(row["Rol"], "N/D"),
+                    ESTADO_TEXTO.get(row["Estado"], "N/D"),
+                    row["FechaCreacion"],
                     "Doble clic"
                 )
             )
@@ -183,14 +224,15 @@ class UsersView:
         if not values:
             return
 
-        user_id = values[0]
+        user_id = int(values[0])
         username = values[2]
         estado = values[4]
 
         action_window = tk.Toplevel(self.parent)
         action_window.title("Acciones de usuario")
         action_window.geometry("340x270")
-        action_window.resizable(False, False)
+        action_window.resizable(True, True)
+        action_window.minsize(280, 220)
         action_window.configure(bg="white")
         action_window.grab_set()
 
@@ -215,8 +257,9 @@ class UsersView:
             command=lambda: self.confirm_edit(user_id, action_window)
         ).pack(pady=8)
 
-        toggle_text = "Inactivar" if estado == "activo" else "Activar"
-        toggle_color = "#dc2626" if estado == "activo" else "#16a34a"
+        estado_actual = ESTADO_ACTIVO if estado == "activo" else ESTADO_INACTIVO
+        toggle_text = "Inactivar" if estado_actual == ESTADO_ACTIVO else "Activar"
+        toggle_color = "#dc2626" if estado_actual == ESTADO_ACTIVO else "#16a34a"
 
         tk.Button(
             action_window,
@@ -228,7 +271,7 @@ class UsersView:
             bd=0,
             relief="flat",
             cursor="hand2",
-            command=lambda: self.toggle_user_status(user_id, estado, action_window)
+            command=lambda: self.toggle_user_status(user_id, estado_actual, action_window)
         ).pack(pady=8)
 
         tk.Button(
@@ -265,15 +308,17 @@ class UsersView:
         if action_window:
             action_window.destroy()
 
-        new_status = "inactivo" if current_status == "activo" else "activo"
+        new_status = ESTADO_INACTIVO if current_status == ESTADO_ACTIVO else ESTADO_ACTIVO
+        new_status_text = ESTADO_TEXTO[new_status]
+        usuario_actual_id = obtener_usuario_actual_id(self.user_data)
 
-        if user_id == self.user_data["id"] and new_status == "inactivo":
+        if user_id == usuario_actual_id and new_status == ESTADO_INACTIVO:
             messagebox.showwarning("Acción no permitida", "No puede inactivar su propio usuario.")
             return
 
         confirm = messagebox.askyesno(
             "Confirmar cambio",
-            f"¿Desea cambiar el estado del usuario a '{new_status}'?"
+            f"¿Desea cambiar el estado del usuario a '{new_status_text}'?"
         )
         if not confirm:
             return
@@ -282,24 +327,57 @@ class UsersView:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
-                UPDATE usuarios
-                SET estado = ?
-                WHERE id = ?
-            """, (new_status, user_id))
+            if self.is_last_active_admin(cursor, user_id) and new_status == ESTADO_INACTIVO:
+                messagebox.showwarning(
+                    "Acción no permitida",
+                    "No puede inactivar al único administrador activo."
+                )
+                return
+
+            usr = usuario_actual_id
 
             cursor.execute("""
-                INSERT INTO bitacora (
-                    usuario_id, accion, tabla_afectada, registro_id, descripcion, fecha_evento
+                UPDATE USUARIO
+                SET
+                    Estado = ?,
+                    Usr = ?,
+                    UsrFecha = date('now','localtime'),
+                    UsrHora = time('now','localtime'),
+                    FechaModificacion = datetime('now','localtime')
+                WHERE Usuario = ?
+            """, (new_status, usr, user_id))
+
+            cursor.execute("""
+                INSERT INTO BITACORA (
+                    Usuario,
+                    Accion,
+                    TablaAfectada,
+                    RegistroAfectado,
+                    Descripcion,
+                    FechaEvento,
+                    Estado,
+                    Usr,
+                    UsrFecha,
+                    UsrHora,
+                    FechaCreacion,
+                    FechaModificacion
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?,
+                    date('now','localtime'),
+                    time('now','localtime'),
+                    datetime('now','localtime'),
+                    datetime('now','localtime')
+                )
             """, (
-                self.user_data["id"],
+                usr,
                 "CAMBIAR_ESTADO_USUARIO",
-                "usuarios",
+                "USUARIO",
                 user_id,
-                f"Se cambió el estado del usuario {user_id} a {new_status}",
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f"Se cambió el estado del usuario {user_id} a {new_status_text}",
+                ahora_texto(),
+                ESTADO_ACTIVO,
+                usr
             ))
 
             conn.commit()
@@ -314,6 +392,9 @@ class UsersView:
             conn.close()
 
 
+# =========================================================
+# FORMULARIO USUARIO
+# =========================================================
 class UserFormWindow:
     def __init__(self, users_view, current_user, mode="create", user_id=None):
         self.users_view = users_view
@@ -360,7 +441,12 @@ class UserFormWindow:
         self.entry_usuario = tk.Entry(form, font=("Arial", 11))
         self.entry_usuario.pack(fill="x", pady=(0, 12))
 
-        tk.Label(form, text="Contraseña" + (" *" if self.mode == "create" else " (opcional)"), font=("Arial", 11, "bold"), bg="white").pack(anchor="w", pady=(0, 5))
+        tk.Label(
+            form,
+            text="Contraseña" + (" *" if self.mode == "create" else " (opcional)"),
+            font=("Arial", 11, "bold"),
+            bg="white"
+        ).pack(anchor="w", pady=(0, 5))
         self.entry_password = tk.Entry(form, font=("Arial", 11), show="*")
         self.entry_password.pack(fill="x", pady=(0, 12))
 
@@ -436,9 +522,9 @@ class UserFormWindow:
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT nombre, usuario, rol
-            FROM usuarios
-            WHERE id = ?
+            SELECT Nombre, NombreUsuario, Rol
+            FROM USUARIO
+            WHERE Usuario = ?
         """, (self.user_id,))
         row = cursor.fetchone()
         conn.close()
@@ -448,9 +534,9 @@ class UserFormWindow:
             self.window.destroy()
             return
 
-        self.entry_nombre.insert(0, row[0])
-        self.entry_usuario.insert(0, row[1])
-        self.role_var.set(row[2])
+        self.entry_nombre.insert(0, row["Nombre"])
+        self.entry_usuario.insert(0, row["NombreUsuario"])
+        self.role_var.set("admin" if row["Rol"] == ROL_ADMIN else "empleado")
 
     def confirm_save(self):
         confirmed = messagebox.askyesno(
@@ -465,30 +551,31 @@ class UserFormWindow:
     def is_last_active_admin(self, cursor, user_id):
         cursor.execute("""
             SELECT COUNT(*)
-            FROM usuarios
-            WHERE rol = 'admin' AND estado = 'activo'
-        """)
+            FROM USUARIO
+            WHERE Rol = ? AND Estado = ?
+        """, (ROL_ADMIN, ESTADO_ACTIVO))
         active_admins = cursor.fetchone()[0]
 
         cursor.execute("""
-            SELECT rol, estado
-            FROM usuarios
-            WHERE id = ?
+            SELECT Rol, Estado
+            FROM USUARIO
+            WHERE Usuario = ?
         """, (user_id,))
         row = cursor.fetchone()
 
         if not row:
             return False
 
-        current_role, current_status = row[0], row[1]
+        current_role = row["Rol"]
+        current_status = row["Estado"]
 
-        return current_role == "admin" and current_status == "activo" and active_admins <= 1
+        return current_role == ROL_ADMIN and current_status == ESTADO_ACTIVO and active_admins <= 1
 
     def save_user(self):
         nombre = self.entry_nombre.get().strip()
         usuario = self.entry_usuario.get().strip()
         password = self.entry_password.get().strip()
-        rol = self.role_var.get()
+        rol = ROL_ADMIN if self.role_var.get() == "admin" else ROL_EMPLEADO
 
         if not nombre or not usuario:
             messagebox.showwarning("Datos requeridos", "Nombre y usuario son obligatorios.")
@@ -502,51 +589,91 @@ class UserFormWindow:
         cursor = conn.cursor()
 
         try:
+            usr = obtener_usuario_actual_id(self.current_user)
+            usuario_actual_id = usr
+
             if self.mode == "create":
-                cursor.execute("SELECT COUNT(*) FROM usuarios WHERE usuario = ?", (usuario,))
+                cursor.execute("SELECT COUNT(*) FROM USUARIO WHERE NombreUsuario = ?", (usuario,))
                 if cursor.fetchone()[0] > 0:
                     messagebox.showwarning("Usuario existente", "Ese nombre de usuario ya existe.")
                     return
 
                 cursor.execute("""
-                    INSERT INTO usuarios (nombre, usuario, password, rol, estado, fecha_creacion)
-                    VALUES (?, ?, ?, ?, 'activo', ?)
+                    INSERT INTO USUARIO (
+                        Nombre,
+                        NombreUsuario,
+                        Password,
+                        Rol,
+                        Estado,
+                        Usr,
+                        UsrFecha,
+                        UsrHora,
+                        FechaCreacion,
+                        FechaModificacion
+                    )
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?,
+                        date('now','localtime'),
+                        time('now','localtime'),
+                        datetime('now','localtime'),
+                        datetime('now','localtime')
+                    )
                 """, (
                     nombre,
                     usuario,
                     password,
                     rol,
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ESTADO_ACTIVO,
+                    usr
                 ))
 
                 new_user_id = cursor.lastrowid
 
                 cursor.execute("""
-                    INSERT INTO bitacora (
-                        usuario_id, accion, tabla_afectada, registro_id, descripcion, fecha_evento
+                    INSERT INTO BITACORA (
+                        Usuario,
+                        Accion,
+                        TablaAfectada,
+                        RegistroAfectado,
+                        Descripcion,
+                        FechaEvento,
+                        Estado,
+                        Usr,
+                        UsrFecha,
+                        UsrHora,
+                        FechaCreacion,
+                        FechaModificacion
                     )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?,
+                        date('now','localtime'),
+                        time('now','localtime'),
+                        datetime('now','localtime'),
+                        datetime('now','localtime')
+                    )
                 """, (
-                    self.current_user["id"],
+                    usr,
                     "CREAR_USUARIO",
-                    "usuarios",
+                    "USUARIO",
                     new_user_id,
-                    f"Se creó el usuario '{usuario}' con rol '{rol}'",
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f"Se creó el usuario '{usuario}' con rol '{ROL_TEXTO.get(rol, 'N/D')}'",
+                    ahora_texto(),
+                    ESTADO_ACTIVO,
+                    usr
                 ))
 
             else:
                 cursor.execute("""
                     SELECT COUNT(*)
-                    FROM usuarios
-                    WHERE usuario = ? AND id != ?
+                    FROM USUARIO
+                    WHERE NombreUsuario = ? AND Usuario != ?
                 """, (usuario, self.user_id))
                 if cursor.fetchone()[0] > 0:
                     messagebox.showwarning("Usuario existente", "Ese nombre de usuario ya existe.")
                     return
 
-                if self.user_id == self.current_user["id"]:
-                    if self.is_last_active_admin(cursor, self.user_id) and rol != "admin":
+                if self.user_id == usuario_actual_id:
+                    if self.is_last_active_admin(cursor, self.user_id) and rol != ROL_ADMIN:
                         messagebox.showwarning(
                             "Acción no permitida",
                             "No puede quitar el rol de administrador al único administrador activo."
@@ -555,29 +682,63 @@ class UserFormWindow:
 
                 if password:
                     cursor.execute("""
-                        UPDATE usuarios
-                        SET nombre = ?, usuario = ?, password = ?, rol = ?
-                        WHERE id = ?
-                    """, (nombre, usuario, password, rol, self.user_id))
+                        UPDATE USUARIO
+                        SET
+                            Nombre = ?,
+                            NombreUsuario = ?,
+                            Password = ?,
+                            Rol = ?,
+                            Usr = ?,
+                            UsrFecha = date('now','localtime'),
+                            UsrHora = time('now','localtime'),
+                            FechaModificacion = datetime('now','localtime')
+                        WHERE Usuario = ?
+                    """, (nombre, usuario, password, rol, usr, self.user_id))
                 else:
                     cursor.execute("""
-                        UPDATE usuarios
-                        SET nombre = ?, usuario = ?, rol = ?
-                        WHERE id = ?
-                    """, (nombre, usuario, rol, self.user_id))
+                        UPDATE USUARIO
+                        SET
+                            Nombre = ?,
+                            NombreUsuario = ?,
+                            Rol = ?,
+                            Usr = ?,
+                            UsrFecha = date('now','localtime'),
+                            UsrHora = time('now','localtime'),
+                            FechaModificacion = datetime('now','localtime')
+                        WHERE Usuario = ?
+                    """, (nombre, usuario, rol, usr, self.user_id))
 
                 cursor.execute("""
-                    INSERT INTO bitacora (
-                        usuario_id, accion, tabla_afectada, registro_id, descripcion, fecha_evento
+                    INSERT INTO BITACORA (
+                        Usuario,
+                        Accion,
+                        TablaAfectada,
+                        RegistroAfectado,
+                        Descripcion,
+                        FechaEvento,
+                        Estado,
+                        Usr,
+                        UsrFecha,
+                        UsrHora,
+                        FechaCreacion,
+                        FechaModificacion
                     )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?,
+                        date('now','localtime'),
+                        time('now','localtime'),
+                        datetime('now','localtime'),
+                        datetime('now','localtime')
+                    )
                 """, (
-                    self.current_user["id"],
+                    usr,
                     "EDITAR_USUARIO",
-                    "usuarios",
+                    "USUARIO",
                     self.user_id,
                     f"Se editó el usuario '{usuario}'",
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ahora_texto(),
+                    ESTADO_ACTIVO,
+                    usr
                 ))
 
             conn.commit()

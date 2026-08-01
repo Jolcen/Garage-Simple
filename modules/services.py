@@ -1,10 +1,38 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from datetime import datetime
 
 from database.db import get_connection
 
 
+# =========================================================
+# CATÁLOGOS
+# =========================================================
+ESTADO_INACTIVO = 0
+ESTADO_ACTIVO = 1
+
+ESTADO_TEXTO = {
+    ESTADO_ACTIVO: "Activo",
+    ESTADO_INACTIVO: "Inactivo",
+}
+
+
+# =========================================================
+# UTILIDADES
+# =========================================================
+def obtener_usuario_actual_id(user_data):
+    if not user_data:
+        return 0
+    return user_data.get("Usuario") or user_data.get("id") or 0
+
+
+def ahora_texto():
+    from datetime import datetime
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+# =========================================================
+# VISTA PRINCIPAL
+# =========================================================
 class ServicesView:
     def __init__(self, parent, user_data):
         self.parent = parent
@@ -95,32 +123,32 @@ class ServicesView:
         table_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
 
         columns = (
-            "id",
-            "nombre",
-            "descripcion",
-            "precio",
-            "duracion",
-            "estado",
-            "acciones"
+            "Servicio",
+            "Nombre",
+            "Descripcion",
+            "Precio",
+            "Duracion",
+            "Estado",
+            "Acciones"
         )
 
         self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", height=18)
 
-        self.tree.heading("id", text="ID")
-        self.tree.heading("nombre", text="Nombre")
-        self.tree.heading("descripcion", text="Descripción")
-        self.tree.heading("precio", text="Precio")
-        self.tree.heading("duracion", text="Duración estimada")
-        self.tree.heading("estado", text="Estado")
-        self.tree.heading("acciones", text="Acciones")
+        self.tree.heading("Servicio", text="ID")
+        self.tree.heading("Nombre", text="Nombre")
+        self.tree.heading("Descripcion", text="Descripción")
+        self.tree.heading("Precio", text="Precio")
+        self.tree.heading("Duracion", text="Duración estimada")
+        self.tree.heading("Estado", text="Estado")
+        self.tree.heading("Acciones", text="Acciones")
 
-        self.tree.column("id", width=55, anchor="center", stretch=False)
-        self.tree.column("nombre", width=170, anchor="w", stretch=False)
-        self.tree.column("descripcion", width=320, anchor="w", stretch=False)
-        self.tree.column("precio", width=100, anchor="center", stretch=False)
-        self.tree.column("duracion", width=140, anchor="center", stretch=False)
-        self.tree.column("estado", width=90, anchor="center", stretch=False)
-        self.tree.column("acciones", width=110, anchor="center", stretch=False)
+        self.tree.column("Servicio", width=55, anchor="center", stretch=False)
+        self.tree.column("Nombre", width=170, anchor="w", stretch=False)
+        self.tree.column("Descripcion", width=320, anchor="w", stretch=False)
+        self.tree.column("Precio", width=100, anchor="center", stretch=False)
+        self.tree.column("Duracion", width=140, anchor="center", stretch=False)
+        self.tree.column("Estado", width=90, anchor="center", stretch=False)
+        self.tree.column("Acciones", width=110, anchor="center", stretch=False)
 
         scrollbar_y = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
         scrollbar_x = ttk.Scrollbar(table_frame, orient="horizontal", command=self.tree.xview)
@@ -149,41 +177,46 @@ class ServicesView:
         cursor = conn.cursor()
 
         query = """
-            SELECT id, nombre, descripcion, precio, duracion_estimada, estado
-            FROM servicios
-            WHERE 1=1
+            SELECT
+                Servicio,
+                Nombre,
+                Descripcion,
+                Precio,
+                DuracionEstimada,
+                Estado
+            FROM SERVICIO
+            WHERE 1 = 1
         """
         params = []
 
         if search_value:
+            like_value = f"%{search_value}%"
             query += """
                 AND (
-                    UPPER(IFNULL(nombre, '')) LIKE ?
-                    OR UPPER(IFNULL(descripcion, '')) LIKE ?
-                    OR UPPER(IFNULL(estado, '')) LIKE ?
+                    UPPER(IFNULL(Nombre, '')) LIKE ?
+                    OR UPPER(IFNULL(Descripcion, '')) LIKE ?
                 )
             """
-            like_value = f"%{search_value}%"
-            params.extend([like_value, like_value, like_value])
+            params.extend([like_value, like_value])
 
-        query += " ORDER BY id ASC"
+        query += " ORDER BY Servicio ASC "
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
         conn.close()
 
         for row in rows:
-            duracion = f"{row[4]} min" if row[4] is not None else "-"
+            duracion = f"{row['DuracionEstimada']} min" if row["DuracionEstimada"] is not None else "-"
             self.tree.insert(
                 "",
                 "end",
                 values=(
-                    row[0],
-                    row[1],
-                    row[2] if row[2] else "",
-                    f"Bs {float(row[3]):.2f}",
+                    row["Servicio"],
+                    row["Nombre"],
+                    row["Descripcion"] if row["Descripcion"] else "",
+                    f"Bs {float(row['Precio']):.2f}",
                     duracion,
-                    row[5],
+                    ESTADO_TEXTO.get(row["Estado"], "N/D"),
                     "Doble clic"
                 )
             )
@@ -205,7 +238,8 @@ class ServicesView:
         action_window = tk.Toplevel(self.parent)
         action_window.title("Acciones de servicio")
         action_window.geometry("340x270")
-        action_window.resizable(False, False)
+        action_window.resizable(True, True)
+        action_window.minsize(280, 220)
         action_window.configure(bg="white")
         action_window.grab_set()
 
@@ -231,8 +265,9 @@ class ServicesView:
             command=lambda: self.confirm_edit(service_id, action_window)
         ).pack(pady=8)
 
-        toggle_text = "Inactivar" if current_status == "activo" else "Activar"
-        toggle_color = "#dc2626" if current_status == "activo" else "#16a34a"
+        estado_actual = ESTADO_ACTIVO if current_status == "Activo" else ESTADO_INACTIVO
+        toggle_text = "Inactivar" if estado_actual == ESTADO_ACTIVO else "Activar"
+        toggle_color = "#dc2626" if estado_actual == ESTADO_ACTIVO else "#16a34a"
 
         tk.Button(
             action_window,
@@ -244,7 +279,7 @@ class ServicesView:
             bd=0,
             relief="flat",
             cursor="hand2",
-            command=lambda: self.toggle_service_status(service_id, current_status, action_window)
+            command=lambda: self.toggle_service_status(service_id, estado_actual, action_window)
         ).pack(pady=8)
 
         tk.Button(
@@ -281,11 +316,12 @@ class ServicesView:
         if action_window:
             action_window.destroy()
 
-        new_status = "inactivo" if current_status == "activo" else "activo"
+        new_status = ESTADO_INACTIVO if current_status == ESTADO_ACTIVO else ESTADO_ACTIVO
+        new_status_text = ESTADO_TEXTO[new_status]
 
         confirm = messagebox.askyesno(
             "Confirmar cambio",
-            f"¿Desea cambiar el estado del servicio a '{new_status}'?"
+            f"¿Desea cambiar el estado del servicio a '{new_status_text}'?"
         )
         if not confirm:
             return
@@ -294,24 +330,50 @@ class ServicesView:
         cursor = conn.cursor()
 
         try:
-            cursor.execute("""
-                UPDATE servicios
-                SET estado = ?
-                WHERE id = ?
-            """, (new_status, service_id))
+            usr = obtener_usuario_actual_id(self.user_data)
 
             cursor.execute("""
-                INSERT INTO bitacora (
-                    usuario_id, accion, tabla_afectada, registro_id, descripcion, fecha_evento
+                UPDATE SERVICIO
+                SET
+                    Estado = ?,
+                    Usr = ?,
+                    UsrFecha = date('now','localtime'),
+                    UsrHora = time('now','localtime'),
+                    FechaModificacion = datetime('now','localtime')
+                WHERE Servicio = ?
+            """, (new_status, usr, service_id))
+
+            cursor.execute("""
+                INSERT INTO BITACORA (
+                    Usuario,
+                    Accion,
+                    TablaAfectada,
+                    RegistroAfectado,
+                    Descripcion,
+                    FechaEvento,
+                    Estado,
+                    Usr,
+                    UsrFecha,
+                    UsrHora,
+                    FechaCreacion,
+                    FechaModificacion
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (
+                    ?, ?, ?, ?, ?, ?, ?, ?,
+                    date('now','localtime'),
+                    time('now','localtime'),
+                    datetime('now','localtime'),
+                    datetime('now','localtime')
+                )
             """, (
-                self.user_data["id"],
+                usr,
                 "CAMBIAR_ESTADO_SERVICIO",
-                "servicios",
+                "SERVICIO",
                 service_id,
-                f"Se cambió el estado del servicio {service_id} a {new_status}",
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f"Se cambió el estado del servicio {service_id} a {new_status_text}",
+                ahora_texto(),
+                ESTADO_ACTIVO,
+                usr
             ))
 
             conn.commit()
@@ -326,6 +388,9 @@ class ServicesView:
             conn.close()
 
 
+# =========================================================
+# FORMULARIO SERVICIO
+# =========================================================
 class ServiceFormWindow:
     def __init__(self, services_view, current_user, mode="create", service_id=None):
         self.services_view = services_view
@@ -428,9 +493,9 @@ class ServiceFormWindow:
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT nombre, descripcion, precio, duracion_estimada
-            FROM servicios
-            WHERE id = ?
+            SELECT Nombre, Descripcion, Precio, DuracionEstimada
+            FROM SERVICIO
+            WHERE Servicio = ?
         """, (self.service_id,))
         row = cursor.fetchone()
         conn.close()
@@ -440,10 +505,10 @@ class ServiceFormWindow:
             self.window.destroy()
             return
 
-        self.entry_nombre.insert(0, row[0])
-        self.text_descripcion.insert("1.0", row[1] if row[1] else "")
-        self.entry_precio.insert(0, str(row[2]))
-        self.entry_duracion.insert(0, "" if row[3] is None else str(row[3]))
+        self.entry_nombre.insert(0, row["Nombre"])
+        self.text_descripcion.insert("1.0", row["Descripcion"] if row["Descripcion"] else "")
+        self.entry_precio.insert(0, str(row["Precio"]))
+        self.entry_duracion.insert(0, "" if row["DuracionEstimada"] is None else str(row["DuracionEstimada"]))
 
     def confirm_save(self):
         confirmed = messagebox.askyesno(
@@ -491,75 +556,144 @@ class ServiceFormWindow:
         cursor = conn.cursor()
 
         try:
+            usr = obtener_usuario_actual_id(self.current_user)
+
             if self.mode == "create":
-                cursor.execute("SELECT COUNT(*) FROM servicios WHERE UPPER(nombre) = ?", (nombre.upper(),))
+                cursor.execute("""
+                    SELECT COUNT(*)
+                    FROM SERVICIO
+                    WHERE UPPER(Nombre) = ?
+                """, (nombre.upper(),))
                 if cursor.fetchone()[0] > 0:
                     messagebox.showwarning("Servicio existente", "Ya existe un servicio con ese nombre.")
                     return
 
                 cursor.execute("""
-                    INSERT INTO servicios (
-                        nombre, descripcion, precio, duracion_estimada, estado, fecha_creacion
+                    INSERT INTO SERVICIO (
+                        Nombre,
+                        Descripcion,
+                        Precio,
+                        DuracionEstimada,
+                        Estado,
+                        Usr,
+                        UsrFecha,
+                        UsrHora,
+                        FechaCreacion,
+                        FechaModificacion
                     )
-                    VALUES (?, ?, ?, ?, 'activo', ?)
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?,
+                        date('now','localtime'),
+                        time('now','localtime'),
+                        datetime('now','localtime'),
+                        datetime('now','localtime')
+                    )
                 """, (
                     nombre,
                     descripcion if descripcion else None,
                     precio,
                     duracion,
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ESTADO_ACTIVO,
+                    usr
                 ))
 
                 new_service_id = cursor.lastrowid
 
                 cursor.execute("""
-                    INSERT INTO bitacora (
-                        usuario_id, accion, tabla_afectada, registro_id, descripcion, fecha_evento
+                    INSERT INTO BITACORA (
+                        Usuario,
+                        Accion,
+                        TablaAfectada,
+                        RegistroAfectado,
+                        Descripcion,
+                        FechaEvento,
+                        Estado,
+                        Usr,
+                        UsrFecha,
+                        UsrHora,
+                        FechaCreacion,
+                        FechaModificacion
                     )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?,
+                        date('now','localtime'),
+                        time('now','localtime'),
+                        datetime('now','localtime'),
+                        datetime('now','localtime')
+                    )
                 """, (
-                    self.current_user["id"],
+                    usr,
                     "CREAR_SERVICIO",
-                    "servicios",
+                    "SERVICIO",
                     new_service_id,
                     f"Se creó el servicio '{nombre}'",
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ahora_texto(),
+                    ESTADO_ACTIVO,
+                    usr
                 ))
 
             else:
                 cursor.execute("""
                     SELECT COUNT(*)
-                    FROM servicios
-                    WHERE UPPER(nombre) = ? AND id != ?
+                    FROM SERVICIO
+                    WHERE UPPER(Nombre) = ? AND Servicio != ?
                 """, (nombre.upper(), self.service_id))
                 if cursor.fetchone()[0] > 0:
                     messagebox.showwarning("Servicio existente", "Ya existe un servicio con ese nombre.")
                     return
 
                 cursor.execute("""
-                    UPDATE servicios
-                    SET nombre = ?, descripcion = ?, precio = ?, duracion_estimada = ?
-                    WHERE id = ?
+                    UPDATE SERVICIO
+                    SET
+                        Nombre = ?,
+                        Descripcion = ?,
+                        Precio = ?,
+                        DuracionEstimada = ?,
+                        Usr = ?,
+                        UsrFecha = date('now','localtime'),
+                        UsrHora = time('now','localtime'),
+                        FechaModificacion = datetime('now','localtime')
+                    WHERE Servicio = ?
                 """, (
                     nombre,
                     descripcion if descripcion else None,
                     precio,
                     duracion,
+                    usr,
                     self.service_id
                 ))
 
                 cursor.execute("""
-                    INSERT INTO bitacora (
-                        usuario_id, accion, tabla_afectada, registro_id, descripcion, fecha_evento
+                    INSERT INTO BITACORA (
+                        Usuario,
+                        Accion,
+                        TablaAfectada,
+                        RegistroAfectado,
+                        Descripcion,
+                        FechaEvento,
+                        Estado,
+                        Usr,
+                        UsrFecha,
+                        UsrHora,
+                        FechaCreacion,
+                        FechaModificacion
                     )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (
+                        ?, ?, ?, ?, ?, ?, ?, ?,
+                        date('now','localtime'),
+                        time('now','localtime'),
+                        datetime('now','localtime'),
+                        datetime('now','localtime')
+                    )
                 """, (
-                    self.current_user["id"],
+                    usr,
                     "EDITAR_SERVICIO",
-                    "servicios",
+                    "SERVICIO",
                     self.service_id,
                     f"Se editó el servicio '{nombre}'",
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    ahora_texto(),
+                    ESTADO_ACTIVO,
+                    usr
                 ))
 
             conn.commit()
