@@ -165,9 +165,10 @@ def _deduplicar_textos(valores):
 
 
 def nombre_tipo_desde_id(tipo_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute(
             "SELECT Nombre FROM TIPOVEHICULO WHERE TipoVehiculo = ? LIMIT 1",
             (tipo_id,),
@@ -177,7 +178,8 @@ def nombre_tipo_desde_id(tipo_id):
     except Exception:
         return ""
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -185,9 +187,10 @@ def nombre_tipo_desde_id(tipo_id):
 # =========================================================
 def ensure_tipo_vehiculo_minimo():
     """Garantiza Auto/Moto sin crear valores basura desde otras tablas."""
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         if not _tabla_existe(cursor, "TIPOVEHICULO"):
             return
 
@@ -224,17 +227,20 @@ def ensure_tipo_vehiculo_minimo():
                 )
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def obtener_tipos_vehiculo_desde_bd():
     ensure_tipo_vehiculo_minimo()
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     tipos = []
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         if _tabla_existe(cursor, "TIPOVEHICULO"):
             cursor.execute(
                 """
@@ -252,7 +258,8 @@ def obtener_tipos_vehiculo_desde_bd():
     except Exception:
         tipos = []
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
     if not tipos:
         tipos = [(1, "Auto"), (2, "Moto")]
@@ -389,10 +396,11 @@ class VehiclesCustomersView:
 
         search_value = self.search_entry.get().strip().upper() if self.search_entry else ""
 
-        conn = get_connection()
-        cursor = conn.cursor()
-
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
             tiene_tipo_cliente = _columna_existe(cursor, "CLIENTE", "TipoCliente")
 
             tipo_cliente_select = "C.TipoCliente" if tiene_tipo_cliente else "'GENERAL' AS TipoCliente"
@@ -472,7 +480,8 @@ class VehiclesCustomersView:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron cargar los registros.\n{str(e)}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def on_double_click(self, event):
         selected = self.tree.selection()
@@ -542,10 +551,11 @@ class VehiclesCustomersView:
         if not messagebox.askyesno("Confirmar eliminación", "¿Está seguro de eliminar este registro?\n\nEsta acción no se puede deshacer."):
             return
 
-        conn = get_connection()
-        cursor = conn.cursor()
-
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
             cursor.execute("SELECT Placa, Cliente FROM VEHICULO WHERE Vehiculo = ? AND Estado = ?", (vehicle_id, ESTADO_GENERAL_ACTIVO))
             row = cursor.fetchone()
             if not row:
@@ -589,10 +599,12 @@ class VehiclesCustomersView:
             self.load_records()
 
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             messagebox.showerror("Error", f"No se pudo eliminar el registro.\n{str(e)}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def inactivar_cliente_si_queda_libre(self, cursor, cliente_id, usr):
         if not cliente_id:
@@ -945,9 +957,10 @@ class VehicleCustomerFormWindow:
 
         filtro = self.entry_buscar_cliente.get().strip().upper() if self.entry_buscar_cliente else ""
 
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             tiene_tipo_cliente = _columna_existe(cursor, "CLIENTE", "TipoCliente")
             tipo_select = "TipoCliente" if tiene_tipo_cliente else "'GENERAL' AS TipoCliente"
             query = f"""
@@ -990,7 +1003,8 @@ class VehicleCustomerFormWindow:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron cargar los clientes.\n{str(e)}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def on_client_selected(self):
         selected = self.client_tree.selection()
@@ -1011,9 +1025,10 @@ class VehicleCustomerFormWindow:
         return tipo_id
 
     def load_data(self):
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             tiene_tipo_cliente = _columna_existe(cursor, "CLIENTE", "TipoCliente")
             tipo_cliente_select = "C.TipoCliente" if tiene_tipo_cliente else "'GENERAL' AS TipoCliente"
 
@@ -1075,7 +1090,8 @@ class VehicleCustomerFormWindow:
             messagebox.showerror("Error", f"No se pudo cargar el registro.\n{str(e)}")
             self.window.destroy()
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def confirm_save(self):
         if messagebox.askyesno("Confirmar guardado", "¿Desea guardar este registro?"):
@@ -1132,10 +1148,11 @@ class VehicleCustomerFormWindow:
                 messagebox.showwarning("Cliente requerido", "Debe seleccionar un cliente existente.")
                 return
 
-        conn = get_connection()
-        cursor = conn.cursor()
-
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
             placa_normalizada = limpiar_placa_para_busqueda(placa)
             usr = obtener_usuario_actual_id(self.current_user)
 
@@ -1207,10 +1224,12 @@ class VehicleCustomerFormWindow:
             self.window.destroy()
 
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             messagebox.showerror("Error", f"No se pudo guardar el registro.\n{str(e)}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def resolve_customer(self, cursor, tipo_cliente, nombres, apellidos, telefono, existing_customer_id=None):
         usr = obtener_usuario_actual_id(self.current_user)

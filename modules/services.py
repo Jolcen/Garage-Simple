@@ -42,7 +42,7 @@ class ServicesView:
         self.search_entry = None
 
     def build(self):
-        if self.user_data["rol"] != "admin":
+        if self.user_data.get("rol") != "admin":
             self.build_access_denied()
             return
 
@@ -173,37 +173,44 @@ class ServicesView:
 
         search_value = self.search_entry.get().strip().upper() if self.search_entry else ""
 
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
 
-        query = """
-            SELECT
-                Servicio,
-                Nombre,
-                Descripcion,
-                Precio,
-                DuracionEstimada,
-                Estado
-            FROM SERVICIO
-            WHERE 1 = 1
-        """
-        params = []
-
-        if search_value:
-            like_value = f"%{search_value}%"
-            query += """
-                AND (
-                    UPPER(IFNULL(Nombre, '')) LIKE ?
-                    OR UPPER(IFNULL(Descripcion, '')) LIKE ?
-                )
+            query = """
+                SELECT
+                    Servicio,
+                    Nombre,
+                    Descripcion,
+                    Precio,
+                    DuracionEstimada,
+                    Estado
+                FROM SERVICIO
+                WHERE 1 = 1
             """
-            params.extend([like_value, like_value])
+            params = []
 
-        query += " ORDER BY Servicio ASC "
+            if search_value:
+                like_value = f"%{search_value}%"
+                query += """
+                    AND (
+                        UPPER(IFNULL(Nombre, '')) LIKE ?
+                        OR UPPER(IFNULL(Descripcion, '')) LIKE ?
+                    )
+                """
+                params.extend([like_value, like_value])
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        conn.close()
+            query += " ORDER BY Servicio ASC "
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+        except Exception as e:
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                conn.close()
 
         for row in rows:
             duracion = f"{row['DuracionEstimada']} min" if row["DuracionEstimada"] is not None else "-"
@@ -326,10 +333,11 @@ class ServicesView:
         if not confirm:
             return
 
-        conn = get_connection()
-        cursor = conn.cursor()
-
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
             usr = obtener_usuario_actual_id(self.user_data)
 
             cursor.execute("""
@@ -381,11 +389,13 @@ class ServicesView:
             self.load_services()
 
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             messagebox.showerror("Error", f"No se pudo actualizar el estado.\n{str(e)}")
 
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
 
 # =========================================================
@@ -489,16 +499,23 @@ class ServiceFormWindow:
         ).grid(row=0, column=1, padx=10)
 
     def load_service_data(self):
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
 
-        cursor.execute("""
-            SELECT Nombre, Descripcion, Precio, DuracionEstimada
-            FROM SERVICIO
-            WHERE Servicio = ?
-        """, (self.service_id,))
-        row = cursor.fetchone()
-        conn.close()
+            cursor.execute("""
+                SELECT Nombre, Descripcion, Precio, DuracionEstimada
+                FROM SERVICIO
+                WHERE Servicio = ?
+            """, (self.service_id,))
+            row = cursor.fetchone()
+        except Exception as e:
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                conn.close()
 
         if not row:
             messagebox.showerror("Error", "No se encontró el servicio.")
@@ -552,10 +569,11 @@ class ServiceFormWindow:
                 messagebox.showwarning("Dato inválido", "La duración no puede ser negativa.")
                 return
 
-        conn = get_connection()
-        cursor = conn.cursor()
-
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
             usr = obtener_usuario_actual_id(self.current_user)
 
             if self.mode == "create":
@@ -702,11 +720,13 @@ class ServiceFormWindow:
             self.window.destroy()
 
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             messagebox.showerror("Error", f"No se pudo guardar el servicio.\n{str(e)}")
 
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def run(self):
         pass

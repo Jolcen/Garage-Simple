@@ -142,9 +142,10 @@ def _ensure_ticket_perdido_schema(cursor):
 
 
 def obtener_valor_configuracion(clave, default=None):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         _ensure_ticket_perdido_schema(cursor)
         cursor.execute("""
             SELECT Valor
@@ -162,7 +163,8 @@ def obtener_valor_configuracion(clave, default=None):
     except Exception:
         return default
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def obtener_multa_ticket_perdido():
@@ -324,10 +326,10 @@ def centrar_ventana(window, width, height, parent=None):
 # CONSULTAS
 # =========================================================
 def obtener_contrato_para_cobro(contrato_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT
                 C.Contrato,
@@ -366,7 +368,8 @@ def obtener_contrato_para_cobro(contrato_id):
         return data
 
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def registrar_pago_contrato(contrato_id, metodo_pago, usr=0):
@@ -374,10 +377,10 @@ def registrar_pago_contrato(contrato_id, metodo_pago, usr=0):
     if metodo_pago not in (METODO_PAGO_EFECTIVO, METODO_PAGO_QR):
         metodo_pago = METODO_PAGO_EFECTIVO
 
-    conn = get_connection()
-    cursor = conn.cursor()
-
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT Contrato, CodigoContrato, MontoContrato, EstadoPago
             FROM CONTRATO
@@ -508,11 +511,12 @@ def registrar_pago_contrato(contrato_id, metodo_pago, usr=0):
         return True
 
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
-
+        if conn:
+            conn.close()
 
 # =========================================================
 # MODAL DE PAGO
@@ -843,9 +847,10 @@ def nombre_tipo_operacion(tipo_operacion):
 
 
 def obtener_operacion_para_cobro(operacion_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT
                 O.Operacion,
@@ -867,7 +872,8 @@ def obtener_operacion_para_cobro(operacion_id):
         """, (operacion_id, ESTADO_OPERACION_ACTIVO))
         return cursor.fetchone()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def obtener_total_servicios_operacion(cursor, operacion_id):
@@ -885,9 +891,10 @@ def calcular_monto_parqueo_operacion(tipo_operacion, tipo_vehiculo_id, minutos_e
     if int(tipo_operacion or 1) == TIPO_OPERACION_CONTRATO:
         return 0.0
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT TD.Monto
             FROM TARIFA T
@@ -936,7 +943,8 @@ def calcular_monto_parqueo_operacion(tipo_operacion, tipo_vehiculo_id, minutos_e
 
         raise ValueError("No existe detalle de tarifa por hora configurado para este tipo de vehículo.")
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def calcular_operacion_para_cobro(operacion):
@@ -944,12 +952,14 @@ def calcular_operacion_para_cobro(operacion):
     fecha_salida = datetime.now()
     minutos = max(1, int((fecha_salida - fecha_ingreso).total_seconds() / 60))
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         monto_servicios = obtener_total_servicios_operacion(cursor, row_get(operacion, "Operacion"))
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
     monto_parqueo = calcular_monto_parqueo_operacion(
         row_get(operacion, "TipoOperacion"),
@@ -975,9 +985,10 @@ def registrar_pago_operacion(operacion_id, metodo_pago, calculo, usr=0):
     if metodo_pago not in (METODO_PAGO_EFECTIVO, METODO_PAGO_QR):
         metodo_pago = METODO_PAGO_EFECTIVO
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT Operacion, CodigoRetiro, Contrato, Estado
             FROM OPERACION
@@ -1166,10 +1177,12 @@ def registrar_pago_operacion(operacion_id, metodo_pago, calculo, usr=0):
         return True
 
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 class PaymentOperationWindow(tk.Toplevel):

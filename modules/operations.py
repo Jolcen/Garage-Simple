@@ -196,9 +196,10 @@ def asegurar_configuracion_multa_ticket():
     Garantiza que exista CONFIGURACION y el valor editable de multa.
     Esto evita que el ticket falle si la base todavía no fue migrada.
     """
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS CONFIGURACION (
                 Configuracion INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -233,18 +234,21 @@ def asegurar_configuracion_multa_ticket():
 
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def obtener_multa_ticket_perdido():
     """Devuelve la multa editable desde CONFIGURACION. Si no existe, usa Bs 50.00."""
     asegurar_configuracion_multa_ticket()
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT Valor
             FROM CONFIGURACION
@@ -269,7 +273,8 @@ def obtener_multa_ticket_perdido():
     except Exception:
         return float(VALOR_DEFAULT_MULTA_TICKET_PERDIDO)
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -546,35 +551,36 @@ class OperationsView:
         placa_filter = self.search_plate_entry.get().strip().upper() if self.search_plate_entry else ""
         codigo_filter = self.search_code_entry.get().strip() if self.search_code_entry else ""
 
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        base_from = """
-            FROM OPERACION O
-            INNER JOIN VEHICULO V ON O.Vehiculo = V.Vehiculo
-            LEFT JOIN TIPOVEHICULO TV ON TV.TipoVehiculo = V.TipoVehiculo
-            WHERE 1 = 1
-        """
-        params = []
-
-        if self.user_role == ROL_EMPLEADO:
-            base_from += " AND O.Estado = ? "
-            params.append(ESTADO_OPERACION_ACTIVO)
-        else:
-            estado_seleccionado = estado_operacion_desde_texto(self.estado_filter_var.get())
-            if estado_seleccionado is not None:
-                base_from += " AND O.Estado = ? "
-                params.append(estado_seleccionado)
-
-        if placa_filter:
-            base_from += " AND REPLACE(REPLACE(UPPER(V.Placa), ' ', ''), '-', '') LIKE ? "
-            params.append(f"%{limpiar_placa_para_busqueda(placa_filter)}%")
-
-        if codigo_filter:
-            base_from += " AND O.CodigoRetiro LIKE ? "
-            params.append(f"%{codigo_filter}%")
-
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
+            base_from = """
+                FROM OPERACION O
+                INNER JOIN VEHICULO V ON O.Vehiculo = V.Vehiculo
+                LEFT JOIN TIPOVEHICULO TV ON TV.TipoVehiculo = V.TipoVehiculo
+                WHERE 1 = 1
+            """
+            params = []
+
+            if self.user_role == ROL_EMPLEADO:
+                base_from += " AND O.Estado = ? "
+                params.append(ESTADO_OPERACION_ACTIVO)
+            else:
+                estado_seleccionado = estado_operacion_desde_texto(self.estado_filter_var.get())
+                if estado_seleccionado is not None:
+                    base_from += " AND O.Estado = ? "
+                    params.append(estado_seleccionado)
+
+            if placa_filter:
+                base_from += " AND REPLACE(REPLACE(UPPER(V.Placa), ' ', ''), '-', '') LIKE ? "
+                params.append(f"%{limpiar_placa_para_busqueda(placa_filter)}%")
+
+            if codigo_filter:
+                base_from += " AND O.CodigoRetiro LIKE ? "
+                params.append(f"%{codigo_filter}%")
+
             count_query = "SELECT COUNT(*) AS Total " + base_from
             cursor.execute(count_query, params)
             row_total = cursor.fetchone()
@@ -635,7 +641,8 @@ class OperationsView:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron cargar las operaciones.\\n{str(e)}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def get_operation_services(self, operation_id, cursor):
         cursor.execute("""
@@ -786,14 +793,16 @@ class OperationsView:
         ).pack(pady=6)
 
     def get_operation_state(self, operation_id):
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             cursor.execute("SELECT Estado FROM OPERACION WHERE Operacion = ? LIMIT 1", (operation_id,))
             row = cursor.fetchone()
             return row["Estado"] if row else None
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def open_new_operation_window(self):
         OperationFormWindow(self, self.user_data, mode="create").run()
@@ -825,10 +834,11 @@ class OperationsView:
             messagebox.showerror("Error", str(e))
 
     def reprint_ticket(self, operation_id):
-        conn = get_connection()
-        cursor = conn.cursor()
-
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
             datos = self.get_operation_ticket_data(cursor, operation_id)
 
             if not datos:
@@ -844,7 +854,8 @@ class OperationsView:
             )
 
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def get_operation_ticket_data(self, cursor, operation_id):
         cursor.execute("""
@@ -1424,13 +1435,14 @@ class OperationFormWindow:
         Esto evita el error FOREIGN KEY, porque VEHICULO.TipoVehiculo
         ahora es INTEGER y apunta a TIPOVEHICULO.TipoVehiculo.
         """
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
 
         self.vehicle_types_data = []
         self.vehicle_type_map = {}
 
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             cursor.execute("""
                 SELECT DISTINCT
                     TV.TipoVehiculo,
@@ -1463,23 +1475,28 @@ class OperationFormWindow:
                 self.vehicle_type_map[nombre] = tipo_id
 
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
         if self.vehicle_types_data and not self.vehicle_type_var.get():
             self.vehicle_type_var.set(self.vehicle_types_data[0])
 
     def load_active_services(self):
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
 
-        cursor.execute("""
-            SELECT Servicio, Nombre, Precio
-            FROM SERVICIO
-            WHERE Estado = ?
-            ORDER BY Nombre ASC
-        """, (ESTADO_GENERAL_ACTIVO,))
-        rows = cursor.fetchall()
-        conn.close()
+            cursor.execute("""
+                SELECT Servicio, Nombre, Precio
+                FROM SERVICIO
+                WHERE Estado = ?
+                ORDER BY Nombre ASC
+            """, (ESTADO_GENERAL_ACTIVO,))
+            rows = cursor.fetchall()
+        finally:
+            if conn:
+                conn.close()
 
         self.services_data = rows
 
@@ -1498,10 +1515,12 @@ class OperationFormWindow:
 
         placa = f"{numero} {letras}"
 
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
 
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
             vehiculo_id = self.get_vehicle_id_by_plate(cursor, placa)
             if not vehiculo_id:
                 self.update_contract_notice()
@@ -1517,7 +1536,8 @@ class OperationFormWindow:
                 )
 
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
         self.update_contract_notice()
 
@@ -1542,70 +1562,73 @@ class OperationFormWindow:
             return fecha
 
     def load_data(self):
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
 
-        cursor.execute("""
-            SELECT
-                O.Operacion,
-                O.Vehiculo,
-                O.Cliente,
-                O.Contrato,
-                V.Placa,
-                V.TipoVehiculo,
-                COALESCE(TV.Nombre, CAST(V.TipoVehiculo AS TEXT)) AS TipoVehiculoNombre
-            FROM OPERACION O
-            INNER JOIN VEHICULO V ON O.Vehiculo = V.Vehiculo
-            LEFT JOIN TIPOVEHICULO TV ON TV.TipoVehiculo = V.TipoVehiculo
-            WHERE O.Operacion = ? AND O.Estado = ?
-        """, (self.operation_id, ESTADO_OPERACION_ACTIVO))
-        row = cursor.fetchone()
+            cursor.execute("""
+                SELECT
+                    O.Operacion,
+                    O.Vehiculo,
+                    O.Cliente,
+                    O.Contrato,
+                    V.Placa,
+                    V.TipoVehiculo,
+                    COALESCE(TV.Nombre, CAST(V.TipoVehiculo AS TEXT)) AS TipoVehiculoNombre
+                FROM OPERACION O
+                INNER JOIN VEHICULO V ON O.Vehiculo = V.Vehiculo
+                LEFT JOIN TIPOVEHICULO TV ON TV.TipoVehiculo = V.TipoVehiculo
+                WHERE O.Operacion = ? AND O.Estado = ?
+            """, (self.operation_id, ESTADO_OPERACION_ACTIVO))
+            row = cursor.fetchone()
 
-        if not row:
-            conn.close()
-            messagebox.showerror("Error", "No se encontró la operación activa.")
-            self.safe_close()
-            return
+            if not row:
+                messagebox.showerror("Error", "No se encontró la operación activa.")
+                self.safe_close()
+                return
 
-        self.loaded_vehicle_id = row["Vehiculo"]
-        self.loaded_customer_id = row["Cliente"]
-        self.loaded_contract_id = row["Contrato"]
+            self.loaded_vehicle_id = row["Vehiculo"]
+            self.loaded_customer_id = row["Cliente"]
+            self.loaded_contract_id = row["Contrato"]
 
-        numero, letras = self.split_plate(row["Placa"])
-        self.entry_placa_numero.insert(0, numero)
-        self.entry_placa_letras.insert(0, letras)
+            numero, letras = self.split_plate(row["Placa"])
+            self.entry_placa_numero.insert(0, numero)
+            self.entry_placa_letras.insert(0, letras)
 
-        tipo_actual = row["TipoVehiculoNombre"] if row["TipoVehiculoNombre"] else ""
-        if tipo_actual and tipo_actual not in self.vehicle_types_data:
-            self.vehicle_types_data.append(tipo_actual)
-            self.vehicle_type_map[tipo_actual] = row["TipoVehiculo"]
-            self.vehicle_types_data = sorted(set(self.vehicle_types_data))
-            if self.vehicle_type_combo:
-                self.vehicle_type_combo.configure(values=self.vehicle_types_data)
-        self.vehicle_type_var.set(tipo_actual if tipo_actual else (self.vehicle_types_data[0] if self.vehicle_types_data else ""))
+            tipo_actual = row["TipoVehiculoNombre"] if row["TipoVehiculoNombre"] else ""
+            if tipo_actual and tipo_actual not in self.vehicle_types_data:
+                self.vehicle_types_data.append(tipo_actual)
+                self.vehicle_type_map[tipo_actual] = row["TipoVehiculo"]
+                self.vehicle_types_data = sorted(set(self.vehicle_types_data))
+                if self.vehicle_type_combo:
+                    self.vehicle_type_combo.configure(values=self.vehicle_types_data)
+            self.vehicle_type_var.set(tipo_actual if tipo_actual else (self.vehicle_types_data[0] if self.vehicle_types_data else ""))
 
 
-        cursor.execute("""
-            SELECT Servicio
-            FROM OPERACIONSERVICIO
-            WHERE Operacion = ? AND Estado != ?
-        """, (self.operation_id, ESTADO_OPERACION_SERVICIO_CANCELADO))
-        selected_ids = {r["Servicio"] for r in cursor.fetchall()}
+            cursor.execute("""
+                SELECT Servicio
+                FROM OPERACIONSERVICIO
+                WHERE Operacion = ? AND Estado != ?
+            """, (self.operation_id, ESTADO_OPERACION_SERVICIO_CANCELADO))
+            selected_ids = {r["Servicio"] for r in cursor.fetchall()}
 
-        for service_id, var in self.service_vars.items():
-            var.set(service_id in selected_ids)
+            for service_id, var in self.service_vars.items():
+                var.set(service_id in selected_ids)
 
-        contract = self.get_active_contract_data_for_vehicle(cursor, self.loaded_vehicle_id)
-        if contract:
-            self.detected_contract_id = contract["Contrato"]
-            self.detected_contract_text = (
-                f"Vehículo con contrato habilitado: {contract['CodigoContrato']} "
-                f"hasta {self.format_date_only(contract['FechaFin'])}. "
-                "El parqueo no se cobrará. Solo se permite guardar si hay servicio extra."
-            )
-            self.update_contract_notice()
+            contract = self.get_active_contract_data_for_vehicle(cursor, self.loaded_vehicle_id)
+            if contract:
+                self.detected_contract_id = contract["Contrato"]
+                self.detected_contract_text = (
+                    f"Vehículo con contrato habilitado: {contract['CodigoContrato']} "
+                    f"hasta {self.format_date_only(contract['FechaFin'])}. "
+                    "El parqueo no se cobrará. Solo se permite guardar si hay servicio extra."
+                )
+                self.update_contract_notice()
 
-        conn.close()
+        finally:
+            if conn:
+                conn.close()
 
     def save_operation(self):
         try:
@@ -1627,10 +1650,12 @@ class OperationFormWindow:
             )
             return
 
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
 
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
             usr = obtener_usuario_actual_id(self.user_data)
 
             if self.mode == "create":
@@ -1798,11 +1823,13 @@ class OperationFormWindow:
             self.safe_close()
 
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             messagebox.showerror("Error", f"No se pudo guardar la operación.\n{str(e)}")
 
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def get_vehicle_id_by_plate(self, cursor, placa):
         cursor.execute("""
@@ -2173,10 +2200,12 @@ class CancelOperationWindow:
             messagebox.showwarning("Dato requerido", "Debe ingresar el motivo de cancelación.")
             return
 
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
 
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
+
             now_str = ahora_texto()
             usr = obtener_usuario_actual_id(self.user_data)
 
@@ -2239,11 +2268,13 @@ class CancelOperationWindow:
             self.operations_view.load_operations()
 
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             messagebox.showerror("Error", f"No se pudo cancelar la operación.\n{str(e)}")
 
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def run(self):
         pass

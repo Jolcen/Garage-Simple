@@ -191,10 +191,11 @@ def ensure_tipo_vehiculo_table():
     1 = Auto
     2 = Moto
     """
-    conn = get_connection()
-    cursor = conn.cursor()
-
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
         cursor.execute("PRAGMA foreign_keys = OFF")
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS TIPOVEHICULO (
@@ -258,18 +259,21 @@ def ensure_tipo_vehiculo_table():
         cursor.execute("PRAGMA foreign_keys = ON")
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def obtener_tipos_vehiculo(solo_activos=True):
     ensure_tipo_vehiculo_table()
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         sql = """
             SELECT TipoVehiculo, Nombre
             FROM TIPOVEHICULO
@@ -295,7 +299,8 @@ def obtener_tipos_vehiculo(solo_activos=True):
             tipos = [{"id": 1, "nombre": "Auto"}, {"id": 2, "nombre": "Moto"}]
         return tipos
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def tipo_id_por_nombre(nombre):
@@ -590,9 +595,10 @@ class RatesView:
         self.clear_tree(self.night_tree)
         tipo_vehiculo_id = self.current_tipo_vehiculo_id()
 
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             # Tarifa por hora
             params = [tipo_vehiculo_id]
             status_sql = self._status_sql(params)
@@ -671,7 +677,8 @@ class RatesView:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron cargar las tarifas.\n{str(e)}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def on_select_grid(self, active_tree, *other_trees):
         if active_tree and active_tree.selection():
@@ -712,9 +719,10 @@ class RatesView:
         if not detail_id:
             messagebox.showwarning("Aviso", "Debe seleccionar una tarifa.")
             return
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             cursor.execute("SELECT Estado FROM TARIFADETALLE WHERE TarifaDetalle = ?", (detail_id,))
             row = cursor.fetchone()
             if not row:
@@ -738,10 +746,12 @@ class RatesView:
             messagebox.showinfo("Actualizado", "Estado actualizado correctamente.")
             self.load_data()
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             messagebox.showerror("Error", f"No se pudo actualizar el estado.\n{str(e)}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def run(self):
         pass
@@ -803,9 +813,10 @@ class VehicleTypeAdminWindow:
         ensure_tipo_vehiculo_table()
         for item in self.tree.get_children():
             self.tree.delete(item)
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             cursor.execute("""
                 SELECT TipoVehiculo, Nombre, Estado
                 FROM TIPOVEHICULO
@@ -818,7 +829,8 @@ class VehicleTypeAdminWindow:
                     ESTADO_TEXTO.get(row_get(row, "Estado", 2), "N/D"),
                 ))
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def get_selected(self):
         selected = self.tree.selection()
@@ -840,9 +852,10 @@ class VehicleTypeAdminWindow:
         if not name or name.isdigit():
             messagebox.showwarning("Datos requeridos", "Debe ingresar un nombre válido.")
             return
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             usr = obtener_usuario_actual_id(self.current_user)
             cursor.execute("""
                 INSERT INTO TIPOVEHICULO (Nombre, Estado, Usr, UsrFecha, UsrHora, FechaCreacion, FechaModificacion)
@@ -855,10 +868,12 @@ class VehicleTypeAdminWindow:
             self.rates_view.refresh_vehicle_combo()
             self.rates_view.load_data()
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             messagebox.showerror("Error", f"No se pudo agregar el tipo de vehículo.\n{str(e)}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def rename_type(self):
         selected = self.get_selected()
@@ -874,9 +889,10 @@ class VehicleTypeAdminWindow:
             return
         if not messagebox.askyesno("Confirmar", f"¿Desea cambiar '{selected['nombre']}' por '{new_name}'?"):
             return
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             usr = obtener_usuario_actual_id(self.current_user)
             cursor.execute("""
                 UPDATE TIPOVEHICULO
@@ -892,10 +908,12 @@ class VehicleTypeAdminWindow:
             self.rates_view.vehicle_var.set(new_name)
             self.rates_view.load_data()
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             messagebox.showerror("Error", f"No se pudo renombrar el tipo de vehículo.\n{str(e)}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def toggle_type(self):
         selected = self.get_selected()
@@ -910,9 +928,10 @@ class VehicleTypeAdminWindow:
         txt = ESTADO_TEXTO[new_status]
         if not messagebox.askyesno("Confirmar", f"¿Desea cambiar este tipo de vehículo a '{txt}'?"):
             return
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             usr = obtener_usuario_actual_id(self.current_user)
             cursor.execute("""
                 UPDATE TIPOVEHICULO
@@ -926,10 +945,12 @@ class VehicleTypeAdminWindow:
             self.rates_view.refresh_vehicle_combo()
             self.rates_view.load_data()
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             messagebox.showerror("Error", f"No se pudo cambiar el estado.\n{str(e)}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def close(self):
         self.rates_view.refresh_vehicle_combo()
@@ -1065,9 +1086,10 @@ class RateDetailFormWindow:
             self.entry_hora_fin.set("08:00")
 
     def load_detail_data(self):
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             cursor.execute("""
                 SELECT TD.TarifaDetalle, TD.Tarifa, TD.TipoDia, TD.MinutoInicio, TD.MinutoFin,
                        TD.HorasPermitidasDia, TD.Monto, TD.HoraInicio, TD.HoraFin,
@@ -1103,7 +1125,8 @@ class RateDetailFormWindow:
             messagebox.showerror("Error", f"No se pudo cargar la tarifa.\n{str(e)}")
             self.window.destroy()
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def get_tarifa_tipo(self):
         if self.section == "contrato":
@@ -1227,9 +1250,10 @@ class RateDetailFormWindow:
 
         tipo_tarifa, tipo_dia = self.get_tarifa_tipo()
         usr = obtener_usuario_actual_id(self.current_user)
-        conn = get_connection()
-        cursor = conn.cursor()
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             tarifa_id = self.get_or_create_tarifa(cursor, tipo_vehiculo_id)
             if self.existe_duplicado(cursor, tarifa_id, tipo_dia, inicio, fin, horas):
                 messagebox.showwarning("Validación", "Ya existe una tarifa con esos datos para este vehículo.")
@@ -1269,10 +1293,12 @@ class RateDetailFormWindow:
             messagebox.showinfo("Guardado", "Tarifa guardada correctamente.")
             self.window.destroy()
         except Exception as e:
-            conn.rollback()
+            if conn:
+                conn.rollback()
             messagebox.showerror("Error", f"No se pudo guardar la tarifa.\n{str(e)}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     def run(self):
         pass

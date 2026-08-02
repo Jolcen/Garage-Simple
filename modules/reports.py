@@ -560,10 +560,10 @@ class ReportsView:
         if not ok:
             return
 
-        conn = get_connection()
-        cursor = conn.cursor()
-
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             pago_tiene_contrato = columna_existe(cursor, "PAGO", "Contrato")
             existe_contrato_vehiculo = tabla_existe(cursor, "CONTRATOVEHICULO")
 
@@ -754,7 +754,8 @@ class ReportsView:
         except Exception as e:
             messagebox.showerror("Error", f"No se pudieron cargar los reportes.\n{str(e)}")
         finally:
-            conn.close()
+            if conn:
+                conn.close()
 
     # =====================================================
     # EXPORTAR EXCEL

@@ -63,9 +63,10 @@ def asegurar_tablas_configuracion():
     Refuerzo de seguridad para que el módulo funcione aunque la BD todavía no
     haya sido inicializada con el schema.py nuevo.
     """
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS CONFIGURACION (
                 Configuracion INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,17 +129,20 @@ def asegurar_tablas_configuracion():
 
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def obtener_configuracion(clave, default=None):
     asegurar_tablas_configuracion()
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT Valor
             FROM CONFIGURACION
@@ -151,14 +155,16 @@ def obtener_configuracion(clave, default=None):
             return default
         return row_get(row, "Valor", row_get(row, 0, default))
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def actualizar_configuracion(clave, valor, descripcion=None, usr=0):
     asegurar_tablas_configuracion()
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO CONFIGURACION (
                 Clave,
@@ -189,10 +195,12 @@ def actualizar_configuracion(clave, valor, descripcion=None, usr=0):
         """, (clave, str(valor), descripcion, usr))
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def obtener_multa_ticket_perdido():
@@ -211,9 +219,10 @@ def obtener_multa_ticket_perdido():
 # =========================================================
 def obtener_tipos_vehiculo():
     asegurar_tablas_configuracion()
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT
                 TipoVehiculo,
@@ -224,13 +233,15 @@ def obtener_tipos_vehiculo():
         """)
         return cursor.fetchall()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def existe_tipo_vehiculo_nombre(nombre, excluir_id=None):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         query = """
             SELECT COUNT(*) AS Total
             FROM TIPOVEHICULO
@@ -244,7 +255,8 @@ def existe_tipo_vehiculo_nombre(nombre, excluir_id=None):
         row = cursor.fetchone()
         return int(row_get(row, "Total", row_get(row, 0, 0)) or 0) > 0
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def guardar_tipo_vehiculo(nombre, estado=ESTADO_ACTIVO, tipo_id=None, usr=0):
@@ -260,9 +272,10 @@ def guardar_tipo_vehiculo(nombre, estado=ESTADO_ACTIVO, tipo_id=None, usr=0):
     if existe_tipo_vehiculo_nombre(nombre, excluir_id=tipo_id):
         raise ValueError("Ya existe un tipo de vehículo con ese nombre.")
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         if tipo_id:
             cursor.execute("""
                 UPDATE TIPOVEHICULO
@@ -297,16 +310,19 @@ def guardar_tipo_vehiculo(nombre, estado=ESTADO_ACTIVO, tipo_id=None, usr=0):
 
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def tipo_vehiculo_en_uso(tipo_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         total = 0
         if tabla_existe(cursor, "VEHICULO"):
             cursor.execute("SELECT COUNT(*) FROM VEHICULO WHERE TipoVehiculo = ?", (tipo_id,))
@@ -316,7 +332,8 @@ def tipo_vehiculo_en_uso(tipo_id):
             total += int(cursor.fetchone()[0] or 0)
         return total > 0
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def eliminar_tipo_vehiculo(tipo_id):
@@ -326,16 +343,19 @@ def eliminar_tipo_vehiculo(tipo_id):
             "Este tipo de vehículo ya está en uso. No se eliminará para evitar errores; puedes dejarlo inactivo."
         )
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("DELETE FROM TIPOVEHICULO WHERE TipoVehiculo = ?", (tipo_id,))
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 # =========================================================

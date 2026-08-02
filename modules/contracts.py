@@ -325,9 +325,10 @@ def agregar_columna_si_no_existe(cursor, tabla, columna, definicion):
 
 
 def asegurar_columnas_contrato():
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         agregar_columna_si_no_existe(cursor, "CONTRATO", "ClaseContrato", "INTEGER NOT NULL DEFAULT 1")
         agregar_columna_si_no_existe(cursor, "CONTRATO", "TarifaDetalle", "INTEGER")
         agregar_columna_si_no_existe(cursor, "CONTRATO", "HorasPermitidasDia", "INTEGER")
@@ -369,10 +370,12 @@ def asegurar_columnas_contrato():
 
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -380,9 +383,10 @@ def asegurar_columnas_contrato():
 # =========================================================
 def generar_codigo_contrato(clase_contrato):
     prefijo = "EST" if int(clase_contrato) == CLASE_ESTANDAR else "ESP"
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         asegurar_columnas_contrato()
         cursor.execute(
             """
@@ -396,13 +400,15 @@ def generar_codigo_contrato(clase_contrato):
         siguiente = int(row_get(fila, "Siguiente", fila[0] if fila else 1) or 1)
         return f"{prefijo}-{siguiente:04d}"
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def obtener_clientes():
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         tipo_cliente_select = "TipoCliente" if columna_existe(cursor, "CLIENTE", "TipoCliente") else "'GENERAL' AS TipoCliente"
         cursor.execute(f"""
             SELECT Cliente, Nombres, Apellidos, Telefono, {tipo_cliente_select}
@@ -412,7 +418,8 @@ def obtener_clientes():
         """)
         return cursor.fetchall()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def formatear_cliente(row):
@@ -428,9 +435,10 @@ def formatear_cliente(row):
 
 
 def obtener_vehiculos():
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT
                 V.Vehiculo,
@@ -454,7 +462,8 @@ def obtener_vehiculos():
         """)
         return cursor.fetchall()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def formatear_vehiculo(row):
@@ -490,9 +499,10 @@ def vehiculo_display_corto(row):
 
 def obtener_vehiculos_contrato(contrato_id):
     asegurar_columnas_contrato()
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT
                 V.Vehiculo,
@@ -533,7 +543,8 @@ def obtener_vehiculos_contrato(contrato_id):
         row = cursor.fetchone()
         return [row] if row else []
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def sincronizar_vehiculos_contrato(cursor, contrato_id, vehiculo_ids, usr=0):
@@ -584,10 +595,11 @@ def obtener_tarifas_contrato_auto():
     Devuelve planes estándar por horas permitidas. Usa TARIFADETALLE.HorasPermitidasDia.
     Si no encuentra registros, usa los montos base indicados por el cliente.
     """
-    conn = get_connection()
-    cursor = conn.cursor()
     tarifas = {}
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         if not columna_existe(cursor, "TARIFADETALLE", "HorasPermitidasDia"):
             return dict(MONTOS_FALLBACK_AUTO)
 
@@ -619,7 +631,8 @@ def obtener_tarifas_contrato_auto():
     except Exception:
         tarifas = {}
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
     if not tarifas:
         return {h: {"TarifaDetalle": None, "Monto": m} for h, m in MONTOS_FALLBACK_AUTO.items()}
@@ -633,9 +646,10 @@ def obtener_tarifas_contrato_auto():
 
 def obtener_contrato_por_id(contrato_id):
     asegurar_columnas_contrato()
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             SELECT
                 C.Contrato,
@@ -676,7 +690,8 @@ def obtener_contrato_por_id(contrato_id):
         """, (contrato_id,))
         return cursor.fetchone()
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def estado_visible_contrato(row):
@@ -704,10 +719,11 @@ def estado_visible_contrato(row):
 def obtener_contratos(busqueda="", estado_visible="Todos", clase="Todos", tipo_cliente="Todos"):
     asegurar_columnas_contrato()
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
 
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         query = """
             SELECT
                 C.Contrato,
@@ -829,13 +845,15 @@ def obtener_contratos(busqueda="", estado_visible="Todos", clase="Todos", tipo_c
         return filas
 
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def existe_contrato_vigente_vehiculo(vehiculo, excluir_contrato=None):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         query = """
             SELECT COUNT(*)
             FROM CONTRATOVEHICULO CV
@@ -874,7 +892,8 @@ def existe_contrato_vigente_vehiculo(vehiculo, excluir_contrato=None):
         return int(cursor.fetchone()[0] or 0) > 0
 
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def validar_vehiculos_sin_contrato_vigente(vehiculo_ids, excluir_contrato=None):
@@ -886,9 +905,10 @@ def validar_vehiculos_sin_contrato_vigente(vehiculo_ids, excluir_contrato=None):
     if not ocupados:
         return
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         placeholders = ",".join("?" for _ in ocupados)
         cursor.execute(f"""
             SELECT Placa
@@ -898,7 +918,8 @@ def validar_vehiculos_sin_contrato_vigente(vehiculo_ids, excluir_contrato=None):
         """, ocupados)
         placas = [row["Placa"] for row in cursor.fetchall()]
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
     if placas:
         raise ValueError("Estos vehículos ya tienen contrato vigente: " + ", ".join(placas))
@@ -1099,9 +1120,10 @@ def insertar_contrato(data, usr=0):
 
     vehiculo_principal = obtener_vehiculo_principal(vehiculo_ids)
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO CONTRATO (
                 Cliente,
@@ -1161,10 +1183,12 @@ def insertar_contrato(data, usr=0):
         return contrato_id
 
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def actualizar_contrato(contrato_id, data, usr=0):
@@ -1180,9 +1204,10 @@ def actualizar_contrato(contrato_id, data, usr=0):
 
     vehiculo_principal = obtener_vehiculo_principal(vehiculo_ids)
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             UPDATE CONTRATO
             SET
@@ -1222,19 +1247,22 @@ def actualizar_contrato(contrato_id, data, usr=0):
 
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def marcar_contrato_pendiente_pago(contrato_id, usr=0):
     """
     Se usa al renovar: el contrato queda nuevamente pendiente y luego se abre payment.py.
     """
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             UPDATE CONTRATO
             SET
@@ -1250,13 +1278,15 @@ def marcar_contrato_pendiente_pago(contrato_id, usr=0):
                 UsrHora = time('now','localtime'),
                 FechaModificacion = datetime('now','localtime')
             WHERE Contrato = ?
-        """, (ESTADO_PAGO_PENDIENTE, ESTADO_ACTIVO, usr, contrato_id))
+            """, (ESTADO_PAGO_PENDIENTE, ESTADO_ACTIVO, usr, contrato_id))
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def abrir_modal_pago(parent, user_data, contrato_id, on_success=None):
@@ -1271,9 +1301,10 @@ def abrir_modal_pago(parent, user_data, contrato_id, on_success=None):
 
 
 def cambiar_estado_contrato(contrato_id, nuevo_estado, usr=0):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         if int(nuevo_estado) == ESTADO_SUSPENDIDO:
             # Al suspender, el contrato deja de estar vigente y se puede volver a cobrar.
             # Por eso se limpia el estado de pago para que no aparezca "ya está pagado".
@@ -1307,10 +1338,12 @@ def cambiar_estado_contrato(contrato_id, nuevo_estado, usr=0):
 
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def tabla_existe(cursor, tabla):
@@ -1452,9 +1485,10 @@ def eliminar_contrato(contrato_id):
     Esto corrige el error: FOREIGN KEY constraint failed.
     """
     asegurar_columnas_contrato()
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("SELECT Contrato FROM CONTRATO WHERE Contrato = ?", (contrato_id,))
         row = cursor.fetchone()
         if not row:
@@ -1468,17 +1502,20 @@ def eliminar_contrato(contrato_id):
 
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def cobrar_contrato(contrato_id, metodo_pago, usr=0):
     asegurar_columnas_contrato()
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("SELECT EstadoPago FROM CONTRATO WHERE Contrato = ?", (contrato_id,))
         row = cursor.fetchone()
         if not row:
@@ -1501,17 +1538,20 @@ def cobrar_contrato(contrato_id, metodo_pago, usr=0):
         registrar_pago_contrato(cursor, contrato_id, metodo_pago, usr)
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def suspender_contratos_vencidos(usr=0):
     asegurar_columnas_contrato()
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         cursor.execute("""
             UPDATE CONTRATO
             SET
@@ -1525,8 +1565,8 @@ def suspender_contratos_vencidos(usr=0):
         """, (ESTADO_VENCIDO, usr, ESTADO_ACTIVO))
         conn.commit()
     finally:
-        conn.close()
-
+        if conn:
+            conn.close()
 
 # =========================================================
 # FORMULARIO CONTRATO

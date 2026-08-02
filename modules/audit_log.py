@@ -269,10 +269,10 @@ class AuditLogView:
         if not ok:
             return
 
-        conn = get_connection()
-        cursor = conn.cursor()
-
+        conn = None
         try:
+            conn = get_connection()
+            cursor = conn.cursor()
             query = """
                 SELECT
                     B.Bitacora,
@@ -334,4 +334,5 @@ class AuditLogView:
                 f"No se pudo cargar la bitácora.\n{str(e)}"
             )
         finally:
-            conn.close()
+            if conn:
+                conn.close()

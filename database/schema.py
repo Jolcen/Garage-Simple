@@ -274,9 +274,10 @@ def _create_configuracion(cursor):
 
 
 def obtener_configuracion(clave, default=None):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         if not _table_exists(cursor, "CONFIGURACION"):
             return default
 
@@ -294,7 +295,8 @@ def obtener_configuracion(clave, default=None):
     except Exception:
         return default
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def obtener_configuracion_float(clave, default=0.0):
@@ -310,9 +312,10 @@ def obtener_multa_ticket_perdido(default=VALOR_DEFAULT_MULTA_TICKET_PERDIDO):
 
 
 def actualizar_configuracion(clave, valor, descripcion=None, usr=0):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = None
     try:
+        conn = get_connection()
+        cursor = conn.cursor()
         _create_configuracion(cursor)
         cursor.execute("""
             INSERT INTO CONFIGURACION (
@@ -344,10 +347,12 @@ def actualizar_configuracion(clave, valor, descripcion=None, usr=0):
         """, (clave, str(valor), descripcion, usr))
         conn.commit()
     except Exception:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         raise
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def _create_usuario(cursor):
@@ -770,32 +775,36 @@ def _create_bitacora(cursor):
 
 
 def create_tables():
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("PRAGMA foreign_keys = ON")
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON")
 
-    if _needs_operational_rebuild(cursor):
-        _rebuild_operational_tables(cursor)
+        if _needs_operational_rebuild(cursor):
+            _rebuild_operational_tables(cursor)
 
-    _create_configuracion(cursor)
-    _create_usuario(cursor)
-    _create_cliente(cursor)
-    _create_tipo_vehiculo(cursor)
-    _create_vehiculo(cursor)
-    _create_tarifa(cursor)
-    _create_tarifa_detalle(cursor)
-    _create_servicio(cursor)
-    _create_contrato(cursor)
-    _create_contrato_vehiculo(cursor)
-    _create_operacion(cursor)
-    _create_operacion_servicio(cursor)
-    _create_pago(cursor)
-    _create_bitacora(cursor)
+        _create_configuracion(cursor)
+        _create_usuario(cursor)
+        _create_cliente(cursor)
+        _create_tipo_vehiculo(cursor)
+        _create_vehiculo(cursor)
+        _create_tarifa(cursor)
+        _create_tarifa_detalle(cursor)
+        _create_servicio(cursor)
+        _create_contrato(cursor)
+        _create_contrato_vehiculo(cursor)
+        _create_operacion(cursor)
+        _create_operacion_servicio(cursor)
+        _create_pago(cursor)
+        _create_bitacora(cursor)
 
-    _crear_indices(cursor)
+        _crear_indices(cursor)
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
 
 
 # =========================================================
@@ -1247,248 +1256,252 @@ def insert_initial_data():
     """
     Inserta datos iniciales sin duplicar.
     """
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("PRAGMA foreign_keys = ON")
+    conn = None
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON")
 
-    # -----------------------------------------------------
-    # Configuración general
-    # -----------------------------------------------------
-    _ensure_configuracion(
-        cursor,
-        CONFIG_MULTA_TICKET_PERDIDO,
-        f"{VALOR_DEFAULT_MULTA_TICKET_PERDIDO:.2f}",
-        "Monto de multa por pérdida de ticket. Este valor se usa en el ticket y en el cobro."
-    )
-
-    # -----------------------------------------------------
-    # Tipos de vehículo
-    # -----------------------------------------------------
-    _ensure_tipo_vehiculo(cursor, TIPO_VEHICULO_AUTO, "Auto")
-    _ensure_tipo_vehiculo(cursor, TIPO_VEHICULO_MOTO, "Moto")
-
-    # -----------------------------------------------------
-    # Usuario admin inicial
-    # -----------------------------------------------------
-    cursor.execute(
-        "SELECT COUNT(*) FROM USUARIO WHERE NombreUsuario = ?",
-        ("admin",),
-    )
-    admin_exists = cursor.fetchone()[0]
-
-    if admin_exists == 0:
-        cursor.execute(f"""
-            INSERT INTO USUARIO (
-                Nombre,
-                NombreUsuario,
-                Password,
-                Rol,
-                Estado,
-                UltimoAcceso,
-                Usr,
-                UsrFecha,
-                UsrHora,
-                FechaCreacion,
-                FechaModificacion
-            )
-            VALUES (
-                ?, ?, ?, ?, ?, ?,
-                ?, {_fecha_actual_sql()}, {_hora_actual_sql()},
-                {_fecha_hora_actual_sql()}, {_fecha_hora_actual_sql()}
-            )
-        """, (
-            "Administrador",
-            "admin",
-            "1234",
-            ROL_ADMIN,
-            ESTADO_ACTIVO,
-            None,
-            0,
-        ))
-
-    # -----------------------------------------------------
-    # Tarifas por vehículo
-    # -----------------------------------------------------
-    tarifa_hora_auto = _ensure_tarifa(
-        cursor,
-        "Tarifa por Hora Auto",
-        TIPO_VEHICULO_AUTO,
-        TIPO_TARIFA_HORA,
-        "Tarifa por hora para auto",
-    )
-    tarifa_nocturna_auto = _ensure_tarifa(
-        cursor,
-        "Tarifa Nocturna Auto",
-        TIPO_VEHICULO_AUTO,
-        TIPO_TARIFA_NOCTURNA,
-        "Tarifa nocturna de 20:00 a 08:00 para auto",
-    )
-    tarifa_contrato_auto = _ensure_tarifa(
-        cursor,
-        "Tarifa Contrato Auto",
-        TIPO_VEHICULO_AUTO,
-        TIPO_TARIFA_CONTRATO,
-        "Tarifa para contratos de auto por horas permitidas al día",
-    )
-
-    tarifa_hora_moto = _ensure_tarifa(
-        cursor,
-        "Tarifa por Hora Moto",
-        TIPO_VEHICULO_MOTO,
-        TIPO_TARIFA_HORA,
-        "Tarifa por hora para moto",
-    )
-    tarifa_nocturna_moto = _ensure_tarifa(
-        cursor,
-        "Tarifa Nocturna Moto",
-        TIPO_VEHICULO_MOTO,
-        TIPO_TARIFA_NOCTURNA,
-        "Tarifa nocturna de 20:00 a 08:00 para moto",
-    )
-
-    # -----------------------------------------------------
-    # Detalles hora auto
-    # -----------------------------------------------------
-    detalle_lunes_viernes_auto = [
-        (1, 30, 4.0, "1 a 30 min"),
-        (31, 60, 6.0, "1 hora"),
-        (61, 120, 10.0, "2 horas"),
-        (121, 180, 14.0, "3 horas"),
-        (181, 240, 18.0, "4 horas"),
-        (241, 300, 22.0, "5 horas"),
-        (301, 360, 26.0, "6 horas"),
-        (361, 420, 30.0, "7 horas"),
-        (421, 480, 35.0, "8 horas"),
-    ]
-
-    for inicio, fin, monto, obs in detalle_lunes_viernes_auto:
-        _ensure_tarifa_detalle(
+        # -----------------------------------------------------
+        # Configuración general
+        # -----------------------------------------------------
+        _ensure_configuracion(
             cursor,
-            tarifa_hora_auto,
-            TIPO_DIA_LUNES_VIERNES,
-            inicio,
-            fin,
-            monto,
-            None,
-            None,
-            None,
-            obs,
+            CONFIG_MULTA_TICKET_PERDIDO,
+            f"{VALOR_DEFAULT_MULTA_TICKET_PERDIDO:.2f}",
+            "Monto de multa por pérdida de ticket. Este valor se usa en el ticket y en el cobro."
         )
 
-    # -----------------------------------------------------
-    # Detalles hora moto
-    # -----------------------------------------------------
-    detalle_lunes_viernes_moto = [
-        (1, 30, 2.0, "1 a 30 min moto"),
-        (31, 60, 3.0, "1 hora moto"),
-        (61, 120, 5.0, "2 horas moto"),
-        (121, 180, 7.0, "3 horas moto"),
-        (181, 240, 9.0, "4 horas moto"),
-        (241, 300, 11.0, "5 horas moto"),
-        (301, 360, 13.0, "6 horas moto"),
-        (361, 420, 15.0, "7 horas moto"),
-        (421, 480, 18.0, "8 horas moto"),
-    ]
+        # -----------------------------------------------------
+        # Tipos de vehículo
+        # -----------------------------------------------------
+        _ensure_tipo_vehiculo(cursor, TIPO_VEHICULO_AUTO, "Auto")
+        _ensure_tipo_vehiculo(cursor, TIPO_VEHICULO_MOTO, "Moto")
 
-    for inicio, fin, monto, obs in detalle_lunes_viernes_moto:
-        _ensure_tarifa_detalle(
+        # -----------------------------------------------------
+        # Usuario admin inicial
+        # -----------------------------------------------------
+        cursor.execute(
+            "SELECT COUNT(*) FROM USUARIO WHERE NombreUsuario = ?",
+            ("admin",),
+        )
+        admin_exists = cursor.fetchone()[0]
+
+        if admin_exists == 0:
+            cursor.execute(f"""
+                INSERT INTO USUARIO (
+                    Nombre,
+                    NombreUsuario,
+                    Password,
+                    Rol,
+                    Estado,
+                    UltimoAcceso,
+                    Usr,
+                    UsrFecha,
+                    UsrHora,
+                    FechaCreacion,
+                    FechaModificacion
+                )
+                VALUES (
+                    ?, ?, ?, ?, ?, ?,
+                    ?, {_fecha_actual_sql()}, {_hora_actual_sql()},
+                    {_fecha_hora_actual_sql()}, {_fecha_hora_actual_sql()}
+                )
+            """, (
+                "Administrador",
+                "admin",
+                "1234",
+                ROL_ADMIN,
+                ESTADO_ACTIVO,
+                None,
+                0,
+            ))
+
+        # -----------------------------------------------------
+        # Tarifas por vehículo
+        # -----------------------------------------------------
+        tarifa_hora_auto = _ensure_tarifa(
             cursor,
-            tarifa_hora_moto,
-            TIPO_DIA_LUNES_VIERNES,
-            inicio,
-            fin,
-            monto,
-            None,
-            None,
-            None,
-            obs,
+            "Tarifa por Hora Auto",
+            TIPO_VEHICULO_AUTO,
+            TIPO_TARIFA_HORA,
+            "Tarifa por hora para auto",
+        )
+        tarifa_nocturna_auto = _ensure_tarifa(
+            cursor,
+            "Tarifa Nocturna Auto",
+            TIPO_VEHICULO_AUTO,
+            TIPO_TARIFA_NOCTURNA,
+            "Tarifa nocturna de 20:00 a 08:00 para auto",
+        )
+        tarifa_contrato_auto = _ensure_tarifa(
+            cursor,
+            "Tarifa Contrato Auto",
+            TIPO_VEHICULO_AUTO,
+            TIPO_TARIFA_CONTRATO,
+            "Tarifa para contratos de auto por horas permitidas al día",
         )
 
-    # -----------------------------------------------------
-    # Detalles nocturnos
-    # -----------------------------------------------------
-    _normalizar_tarifa_nocturna(
-        cursor,
-        tarifa_nocturna_auto,
-        25.0,
-        "Tarifa nocturna auto de 20:00 a 08:00",
-    )
-
-    _normalizar_tarifa_nocturna(
-        cursor,
-        tarifa_nocturna_moto,
-        15.0,
-        "Tarifa nocturna moto de 20:00 a 08:00",
-    )
-
-    # -----------------------------------------------------
-    # Detalles de contrato estándar para auto
-    # Regla del dueño:
-    # 3h = 250
-    # 6h = 300
-    # 9h = 350
-    # 12h = 400
-    # 24h = 500
-    # El monto NO se multiplica si el contrato incluye varios vehículos.
-    # -----------------------------------------------------
-    detalles_contrato_auto = [
-        (3, 250.0),
-        (6, 300.0),
-        (9, 350.0),
-        (12, 400.0),
-        (24, 500.0),
-    ]
-
-    for horas, monto in detalles_contrato_auto:
-        _ensure_tarifa_detalle(
+        tarifa_hora_moto = _ensure_tarifa(
             cursor,
-            tarifa_contrato_auto,
-            TIPO_DIA_CONTRATO,
-            horas,
-            horas,
-            monto,
-            horas,
-            None,
-            None,
-            f"Contrato estándar auto {horas}h por día",
+            "Tarifa por Hora Moto",
+            TIPO_VEHICULO_MOTO,
+            TIPO_TARIFA_HORA,
+            "Tarifa por hora para moto",
+        )
+        tarifa_nocturna_moto = _ensure_tarifa(
+            cursor,
+            "Tarifa Nocturna Moto",
+            TIPO_VEHICULO_MOTO,
+            TIPO_TARIFA_NOCTURNA,
+            "Tarifa nocturna de 20:00 a 08:00 para moto",
         )
 
-    # -----------------------------------------------------
-    # Servicios iniciales
-    # -----------------------------------------------------
-    cursor.execute("SELECT COUNT(*) FROM SERVICIO")
-    servicios_count = cursor.fetchone()[0]
-
-    if servicios_count == 0:
-        servicios = [
-            ("Lavado", "Lavado básico del vehículo", 15.00, 30, ESTADO_ACTIVO, 0),
-            ("Pulido", "Pulido exterior", 25.00, 60, ESTADO_ACTIVO, 0),
-            ("Detailing", "Limpieza y detallado del vehículo", 40.00, 90, ESTADO_ACTIVO, 0),
-            ("Mantenimiento", "Servicio general de mantenimiento", 50.00, 120, ESTADO_ACTIVO, 0),
+        # -----------------------------------------------------
+        # Detalles hora auto
+        # -----------------------------------------------------
+        detalle_lunes_viernes_auto = [
+            (1, 30, 4.0, "1 a 30 min"),
+            (31, 60, 6.0, "1 hora"),
+            (61, 120, 10.0, "2 horas"),
+            (121, 180, 14.0, "3 horas"),
+            (181, 240, 18.0, "4 horas"),
+            (241, 300, 22.0, "5 horas"),
+            (301, 360, 26.0, "6 horas"),
+            (361, 420, 30.0, "7 horas"),
+            (421, 480, 35.0, "8 horas"),
         ]
 
-        cursor.executemany(f"""
-            INSERT INTO SERVICIO (
-                Nombre,
-                Descripcion,
-                Precio,
-                DuracionEstimada,
-                Estado,
-                Usr,
-                UsrFecha,
-                UsrHora,
-                FechaCreacion,
-                FechaModificacion
+        for inicio, fin, monto, obs in detalle_lunes_viernes_auto:
+            _ensure_tarifa_detalle(
+                cursor,
+                tarifa_hora_auto,
+                TIPO_DIA_LUNES_VIERNES,
+                inicio,
+                fin,
+                monto,
+                None,
+                None,
+                None,
+                obs,
             )
-            VALUES (
-                ?, ?, ?, ?, ?, ?,
-                {_fecha_actual_sql()}, {_hora_actual_sql()},
-                {_fecha_hora_actual_sql()}, {_fecha_hora_actual_sql()}
-            )
-        """, servicios)
 
-    conn.commit()
-    conn.close()
+        # -----------------------------------------------------
+        # Detalles hora moto
+        # -----------------------------------------------------
+        detalle_lunes_viernes_moto = [
+            (1, 30, 2.0, "1 a 30 min moto"),
+            (31, 60, 3.0, "1 hora moto"),
+            (61, 120, 5.0, "2 horas moto"),
+            (121, 180, 7.0, "3 horas moto"),
+            (181, 240, 9.0, "4 horas moto"),
+            (241, 300, 11.0, "5 horas moto"),
+            (301, 360, 13.0, "6 horas moto"),
+            (361, 420, 15.0, "7 horas moto"),
+            (421, 480, 18.0, "8 horas moto"),
+        ]
+
+        for inicio, fin, monto, obs in detalle_lunes_viernes_moto:
+            _ensure_tarifa_detalle(
+                cursor,
+                tarifa_hora_moto,
+                TIPO_DIA_LUNES_VIERNES,
+                inicio,
+                fin,
+                monto,
+                None,
+                None,
+                None,
+                obs,
+            )
+
+        # -----------------------------------------------------
+        # Detalles nocturnos
+        # -----------------------------------------------------
+        _normalizar_tarifa_nocturna(
+            cursor,
+            tarifa_nocturna_auto,
+            25.0,
+            "Tarifa nocturna auto de 20:00 a 08:00",
+        )
+
+        _normalizar_tarifa_nocturna(
+            cursor,
+            tarifa_nocturna_moto,
+            15.0,
+            "Tarifa nocturna moto de 20:00 a 08:00",
+        )
+
+        # -----------------------------------------------------
+        # Detalles de contrato estándar para auto
+        # Regla del dueño:
+        # 3h = 250
+        # 6h = 300
+        # 9h = 350
+        # 12h = 400
+        # 24h = 500
+        # El monto NO se multiplica si el contrato incluye varios vehículos.
+        # -----------------------------------------------------
+        detalles_contrato_auto = [
+            (3, 250.0),
+            (6, 300.0),
+            (9, 350.0),
+            (12, 400.0),
+            (24, 500.0),
+        ]
+
+        for horas, monto in detalles_contrato_auto:
+            _ensure_tarifa_detalle(
+                cursor,
+                tarifa_contrato_auto,
+                TIPO_DIA_CONTRATO,
+                horas,
+                horas,
+                monto,
+                horas,
+                None,
+                None,
+                f"Contrato estándar auto {horas}h por día",
+            )
+
+        # -----------------------------------------------------
+        # Servicios iniciales
+        # -----------------------------------------------------
+        cursor.execute("SELECT COUNT(*) FROM SERVICIO")
+        servicios_count = cursor.fetchone()[0]
+
+        if servicios_count == 0:
+            servicios = [
+                ("Lavado", "Lavado básico del vehículo", 15.00, 30, ESTADO_ACTIVO, 0),
+                ("Pulido", "Pulido exterior", 25.00, 60, ESTADO_ACTIVO, 0),
+                ("Detailing", "Limpieza y detallado del vehículo", 40.00, 90, ESTADO_ACTIVO, 0),
+                ("Mantenimiento", "Servicio general de mantenimiento", 50.00, 120, ESTADO_ACTIVO, 0),
+            ]
+
+            cursor.executemany(f"""
+                INSERT INTO SERVICIO (
+                    Nombre,
+                    Descripcion,
+                    Precio,
+                    DuracionEstimada,
+                    Estado,
+                    Usr,
+                    UsrFecha,
+                    UsrHora,
+                    FechaCreacion,
+                    FechaModificacion
+                )
+                VALUES (
+                    ?, ?, ?, ?, ?, ?,
+                    {_fecha_actual_sql()}, {_hora_actual_sql()},
+                    {_fecha_hora_actual_sql()}, {_fecha_hora_actual_sql()}
+                )
+            """, servicios)
+
+        conn.commit()
+    finally:
+        if conn:
+            conn.close()
 
 
 # =========================================================
