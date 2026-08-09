@@ -2105,9 +2105,6 @@ class ContractForm(tk.Toplevel):
                 horas = None
                 tarifa_detalle = None
 
-                if not es_admin(self.user_data) and not self.contrato:
-                    raise ValueError("Solo el administrador puede crear contratos especiales.")
-
             if self.es_renovacion and self.fecha_fin_original_db:
                 fecha_inicio_db = fecha_base_renovacion(self.fecha_fin_original_db)
                 if self.clase_contrato == CLASE_ESTANDAR:
@@ -2132,8 +2129,6 @@ class ContractForm(tk.Toplevel):
 
             if self.contrato:
                 if es_empleado(self.user_data):
-                    if int(row_get(self.contrato, "ClaseContrato", CLASE_ESTANDAR) or CLASE_ESTANDAR) == CLASE_ESPECIAL:
-                        raise ValueError("El empleado no puede editar contratos especiales.")
                     if int(row_get(self.contrato, "EstadoPago", 0) or 0) == ESTADO_PAGO_PAGADO and not self.es_renovacion:
                         raise ValueError("El empleado no puede editar contratos ya pagados.")
 
@@ -2417,10 +2412,6 @@ class ContractsView(tk.Frame):
             )
 
     def abrir_nuevo(self, clase_contrato):
-        if clase_contrato == CLASE_ESPECIAL and not es_admin(self.user_data):
-            messagebox.showwarning("Acceso denegado", "Solo el administrador puede crear contratos especiales.")
-            return
-
         ContractForm(self, self.user_data, self.cargar_contratos, clase_contrato=clase_contrato)
 
     def _obtener_id_seleccionado(self):
@@ -2448,9 +2439,6 @@ class ContractsView(tk.Frame):
                 return
 
         if es_empleado(self.user_data):
-            if int(row_get(contrato, "ClaseContrato", CLASE_ESTANDAR) or CLASE_ESTANDAR) == CLASE_ESPECIAL:
-                messagebox.showwarning("Acceso denegado", "El empleado no puede editar contratos especiales.")
-                return
             if int(row_get(contrato, "EstadoPago", 0) or 0) == ESTADO_PAGO_PAGADO:
                 messagebox.showwarning("Acceso denegado", "El empleado no puede editar contratos ya pagados.")
                 return
@@ -2498,10 +2486,6 @@ class ContractsView(tk.Frame):
         contrato = obtener_contrato_por_id(contrato_id)
         if not contrato:
             messagebox.showerror("Error", "No se encontró el contrato.")
-            return
-
-        if int(row_get(contrato, "ClaseContrato", CLASE_ESTANDAR) or CLASE_ESTANDAR) == CLASE_ESPECIAL and not es_admin(self.user_data):
-            messagebox.showwarning("Acceso denegado", "Solo el administrador puede renovar contratos especiales.")
             return
 
         RenovarContratoForm(self, self.user_data, contrato, self.cargar_contratos)
