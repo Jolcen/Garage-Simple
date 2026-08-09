@@ -636,6 +636,7 @@ class VehiclesCustomersView:
 class VehicleCustomerFormWindow:
     def __init__(self, view, current_user, mode="create", vehicle_id=None):
         self.view = view
+        self.parent = view
         self.current_user = current_user or {}
         self.mode = mode
         self.vehicle_id = vehicle_id

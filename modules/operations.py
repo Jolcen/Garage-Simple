@@ -1089,6 +1089,7 @@ class TicketPreviewWindow:
 class OperationFormWindow:
     def __init__(self, operations_view, user_data, mode="create", operation_id=None):
         self.operations_view = operations_view
+        self.parent = operations_view
         self.user_data = user_data
         self.mode = mode
         self.operation_id = operation_id
@@ -2128,6 +2129,7 @@ class OperationFormWindow:
 class CancelOperationWindow:
     def __init__(self, operations_view, user_data, operation_id):
         self.operations_view = operations_view
+        self.parent = operations_view
         self.user_data = user_data
         self.operation_id = operation_id
 

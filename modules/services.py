@@ -404,6 +404,7 @@ class ServicesView:
 class ServiceFormWindow:
     def __init__(self, services_view, current_user, mode="create", service_id=None):
         self.services_view = services_view
+        self.parent = services_view
         self.current_user = current_user
         self.mode = mode
         self.service_id = service_id
