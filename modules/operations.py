@@ -1742,14 +1742,27 @@ class OperationFormWindow:
 
                 conn.commit()
 
-                # Abrir vista previa del ticket automáticamente después del ingreso
-                ticket_data = {
-                    "Operacion": operacion_id,
-                    "CodigoRetiro": codigo_retiro,
-                    "FechaIngreso": fecha_ingreso,
-                    "Placa": placa,
-                }
-                TicketPreviewWindow(self.parent, ticket_data).run()
+                # Imprimir ticket automáticamente después del ingreso
+                try:
+                    fecha_dt = datetime.strptime(fecha_ingreso, "%Y-%m-%d %H:%M:%S")
+                    fecha_ticket = fecha_dt.strftime("%d/%m/%Y")
+                    hora_ticket = fecha_dt.strftime("%H:%M")
+                except Exception:
+                    fecha_ticket = fecha_ingreso
+                    hora_ticket = ""
+
+                try:
+                    imprimir_ticket(
+                        codigo=codigo_retiro,
+                        placa=placa,
+                        fecha=fecha_ticket,
+                        hora_ingreso=hora_ticket
+                    )
+                except Exception as e:
+                    messagebox.showwarning(
+                        "Impresión",
+                        f"La operación se guardó correctamente pero no se pudo imprimir el ticket.\n{str(e)}"
+                    )
 
             else:
                 vehiculo_id = self.loaded_vehicle_id
