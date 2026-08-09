@@ -682,6 +682,9 @@ class VehicleCustomerFormWindow:
         self.new_client_frame = None
         self.existing_client_frame = None
         self.lbl_selected_client = None
+        self.scroll_canvas = None
+        self.scrollbar = None
+        self.scrollable_frame = None
 
         self.build_ui()
 
@@ -691,9 +694,76 @@ class VehicleCustomerFormWindow:
             self.load_clients()
             self.update_client_mode()
 
+    def _bind_mousewheel(self, event):
+        try:
+            if self.scroll_canvas and self.scroll_canvas.winfo_exists():
+                self.scroll_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+                self.scroll_canvas.bind_all("<Button-4>", self._on_mousewheel)
+                self.scroll_canvas.bind_all("<Button-5>", self._on_mousewheel)
+        except tk.TclError:
+            pass
+
+    def _unbind_mousewheel(self, event):
+        try:
+            if self.scroll_canvas and self.scroll_canvas.winfo_exists():
+                self.scroll_canvas.unbind_all("<MouseWheel>")
+                self.scroll_canvas.unbind_all("<Button-4>")
+                self.scroll_canvas.unbind_all("<Button-5>")
+        except tk.TclError:
+            pass
+
+    def _on_mousewheel(self, event):
+        try:
+            if not self.scroll_canvas or not self.scroll_canvas.winfo_exists():
+                return
+            delta = 0
+            if hasattr(event, "delta") and event.delta:
+                delta = int(-1 * (event.delta / 120))
+            elif getattr(event, "num", None) == 4:
+                delta = -1
+            elif getattr(event, "num", None) == 5:
+                delta = 1
+            if delta != 0:
+                self.scroll_canvas.yview_scroll(delta, "units")
+        except tk.TclError:
+            pass
+
     def build_ui(self):
-        main = tk.Frame(self.window, bg=COLOR_CARD, highlightbackground=COLOR_BORDER, highlightthickness=1)
-        main.pack(fill="both", expand=True, padx=16, pady=16)
+        outer = tk.Frame(self.window, bg=COLOR_BG)
+        outer.pack(fill="both", expand=True, padx=16, pady=16)
+
+        self.scroll_canvas = tk.Canvas(outer, bg=COLOR_BG, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(outer, orient="vertical", command=self.scroll_canvas.yview)
+
+        self.scrollable_frame = tk.Frame(self.scroll_canvas, bg=COLOR_BG)
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+        )
+
+        canvas_window = self.scroll_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+
+        def on_canvas_configure(event):
+            try:
+                if self.scroll_canvas and self.scroll_canvas.winfo_exists():
+                    self.scroll_canvas.itemconfig(canvas_window, width=event.width)
+            except tk.TclError:
+                pass
+
+        self.scroll_canvas.bind("<Configure>", on_canvas_configure)
+        self.scroll_canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.scroll_canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.scroll_canvas.bind("<Enter>", self._bind_mousewheel)
+        self.scroll_canvas.bind("<Leave>", self._unbind_mousewheel)
+        self.scrollable_frame.bind("<Enter>", self._bind_mousewheel)
+        self.scrollable_frame.bind("<Leave>", self._unbind_mousewheel)
+
+        main = tk.Frame(self.scrollable_frame, bg=COLOR_CARD, highlightbackground=COLOR_BORDER, highlightthickness=1)
+        main.pack(fill="both", expand=True)
+        main.columnconfigure(0, weight=1)
 
         title = "Nuevo registro" if self.mode == "create" else "Editar registro"
         tk.Label(main, text=title, font=("Arial", 20, "bold"), bg=COLOR_CARD, fg=COLOR_TEXT).pack(anchor="w", padx=22, pady=(14, 3))

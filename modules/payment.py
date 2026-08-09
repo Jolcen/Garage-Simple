@@ -539,6 +539,9 @@ class PaymentContractWindow(tk.Toplevel):
         self.var_metodo = tk.StringVar(value="Efectivo")
         self.qr_image_ref = None
         self.qr_frame = None
+        self.scroll_canvas = None
+        self.scrollbar = None
+        self.scrollable_frame = None
 
         self.title("Cobrar contrato")
         self.configure(bg=COLOR_BG)
@@ -557,18 +560,76 @@ class PaymentContractWindow(tk.Toplevel):
         except Exception:
             pass
 
+    def _bind_mousewheel(self, event):
+        try:
+            if self.scroll_canvas and self.scroll_canvas.winfo_exists():
+                self.scroll_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+                self.scroll_canvas.bind_all("<Button-4>", self._on_mousewheel)
+                self.scroll_canvas.bind_all("<Button-5>", self._on_mousewheel)
+        except tk.TclError:
+            pass
+
+    def _unbind_mousewheel(self, event):
+        try:
+            if self.scroll_canvas and self.scroll_canvas.winfo_exists():
+                self.scroll_canvas.unbind_all("<MouseWheel>")
+                self.scroll_canvas.unbind_all("<Button-4>")
+                self.scroll_canvas.unbind_all("<Button-5>")
+        except tk.TclError:
+            pass
+
+    def _on_mousewheel(self, event):
+        try:
+            if not self.scroll_canvas or not self.scroll_canvas.winfo_exists():
+                return
+            delta = 0
+            if hasattr(event, "delta") and event.delta:
+                delta = int(-1 * (event.delta / 120))
+            elif getattr(event, "num", None) == 4:
+                delta = -1
+            elif getattr(event, "num", None) == 5:
+                delta = 1
+            if delta != 0:
+                self.scroll_canvas.yview_scroll(delta, "units")
+        except tk.TclError:
+            pass
+
     def _build_ui(self):
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
+        outer = tk.Frame(self, bg=COLOR_BG)
+        outer.pack(fill="both", expand=True, padx=14, pady=14)
 
-        main = tk.Frame(self, bg=COLOR_BG)
-        main.grid(row=0, column=0, sticky="nsew", padx=14, pady=14)
-        main.grid_columnconfigure(0, weight=1)
-        main.grid_rowconfigure(0, weight=1)
+        self.scroll_canvas = tk.Canvas(outer, bg=COLOR_BG, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(outer, orient="vertical", command=self.scroll_canvas.yview)
 
-        card = tk.Frame(main, bg=COLOR_CARD, highlightbackground=COLOR_BORDER, highlightthickness=1)
-        card.grid(row=0, column=0, sticky="nsew")
-        card.grid_columnconfigure(0, weight=1)
+        self.scrollable_frame = tk.Frame(self.scroll_canvas, bg=COLOR_BG)
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+        )
+
+        canvas_window = self.scroll_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+
+        def on_canvas_configure(event):
+            try:
+                if self.scroll_canvas and self.scroll_canvas.winfo_exists():
+                    self.scroll_canvas.itemconfig(canvas_window, width=event.width)
+            except tk.TclError:
+                pass
+
+        self.scroll_canvas.bind("<Configure>", on_canvas_configure)
+        self.scroll_canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.scroll_canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.scroll_canvas.bind("<Enter>", self._bind_mousewheel)
+        self.scroll_canvas.bind("<Leave>", self._unbind_mousewheel)
+        self.scrollable_frame.bind("<Enter>", self._bind_mousewheel)
+        self.scrollable_frame.bind("<Leave>", self._unbind_mousewheel)
+
+        card = tk.Frame(self.scrollable_frame, bg=COLOR_CARD, highlightbackground=COLOR_BORDER, highlightthickness=1)
+        card.pack(fill="both", expand=True)
+        card.columnconfigure(0, weight=1)
 
         tk.Label(
             card,
@@ -1202,6 +1263,9 @@ class PaymentOperationWindow(tk.Toplevel):
         self.lbl_servicios_valor = None
         self.lbl_total_valor = None
         self.chk_ticket_perdido = None
+        self.scroll_canvas = None
+        self.scrollbar = None
+        self.scrollable_frame = None
 
         self.operacion = obtener_operacion_para_cobro(operacion_id)
         if not self.operacion:
@@ -1229,11 +1293,74 @@ class PaymentOperationWindow(tk.Toplevel):
         except Exception:
             pass
 
-    def _build_ui(self):
-        main = tk.Frame(self, bg=COLOR_BG)
-        main.pack(fill="both", expand=True, padx=14, pady=14)
+    def _bind_mousewheel(self, event):
+        try:
+            if self.scroll_canvas and self.scroll_canvas.winfo_exists():
+                self.scroll_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+                self.scroll_canvas.bind_all("<Button-4>", self._on_mousewheel)
+                self.scroll_canvas.bind_all("<Button-5>", self._on_mousewheel)
+        except tk.TclError:
+            pass
 
-        card = tk.Frame(main, bg=COLOR_CARD, highlightbackground=COLOR_BORDER, highlightthickness=1)
+    def _unbind_mousewheel(self, event):
+        try:
+            if self.scroll_canvas and self.scroll_canvas.winfo_exists():
+                self.scroll_canvas.unbind_all("<MouseWheel>")
+                self.scroll_canvas.unbind_all("<Button-4>")
+                self.scroll_canvas.unbind_all("<Button-5>")
+        except tk.TclError:
+            pass
+
+    def _on_mousewheel(self, event):
+        try:
+            if not self.scroll_canvas or not self.scroll_canvas.winfo_exists():
+                return
+            delta = 0
+            if hasattr(event, "delta") and event.delta:
+                delta = int(-1 * (event.delta / 120))
+            elif getattr(event, "num", None) == 4:
+                delta = -1
+            elif getattr(event, "num", None) == 5:
+                delta = 1
+            if delta != 0:
+                self.scroll_canvas.yview_scroll(delta, "units")
+        except tk.TclError:
+            pass
+
+    def _build_ui(self):
+        outer = tk.Frame(self, bg=COLOR_BG)
+        outer.pack(fill="both", expand=True, padx=14, pady=14)
+
+        self.scroll_canvas = tk.Canvas(outer, bg=COLOR_BG, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(outer, orient="vertical", command=self.scroll_canvas.yview)
+
+        self.scrollable_frame = tk.Frame(self.scroll_canvas, bg=COLOR_BG)
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+        )
+
+        canvas_window = self.scroll_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+
+        def on_canvas_configure(event):
+            try:
+                if self.scroll_canvas and self.scroll_canvas.winfo_exists():
+                    self.scroll_canvas.itemconfig(canvas_window, width=event.width)
+            except tk.TclError:
+                pass
+
+        self.scroll_canvas.bind("<Configure>", on_canvas_configure)
+        self.scroll_canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.scroll_canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.scroll_canvas.bind("<Enter>", self._bind_mousewheel)
+        self.scroll_canvas.bind("<Leave>", self._unbind_mousewheel)
+        self.scrollable_frame.bind("<Enter>", self._bind_mousewheel)
+        self.scrollable_frame.bind("<Leave>", self._unbind_mousewheel)
+
+        card = tk.Frame(self.scrollable_frame, bg=COLOR_CARD, highlightbackground=COLOR_BORDER, highlightthickness=1)
         card.pack(fill="both", expand=True)
         card.columnconfigure(0, weight=1)
 

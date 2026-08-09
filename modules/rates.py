@@ -979,6 +979,9 @@ class RateDetailFormWindow:
         self.entry_monto = None
         self.entry_hora_inicio = None
         self.entry_hora_fin = None
+        self.scroll_canvas = None
+        self.scrollbar = None
+        self.scrollable_frame = None
 
         self.window = tk.Toplevel(rates_view.parent)
         self.window.title("Nueva tarifa" if detail_id is None else "Editar tarifa")
@@ -1009,16 +1012,82 @@ class RateDetailFormWindow:
             return "Nueva tarifa de contrato" if self.detail_id is None else "Editar tarifa de contrato"
         return "Nueva tarifa nocturna" if self.detail_id is None else "Editar tarifa nocturna"
 
+    def _bind_mousewheel(self, event):
+        try:
+            if self.scroll_canvas and self.scroll_canvas.winfo_exists():
+                self.scroll_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+                self.scroll_canvas.bind_all("<Button-4>", self._on_mousewheel)
+                self.scroll_canvas.bind_all("<Button-5>", self._on_mousewheel)
+        except tk.TclError:
+            pass
+
+    def _unbind_mousewheel(self, event):
+        try:
+            if self.scroll_canvas and self.scroll_canvas.winfo_exists():
+                self.scroll_canvas.unbind_all("<MouseWheel>")
+                self.scroll_canvas.unbind_all("<Button-4>")
+                self.scroll_canvas.unbind_all("<Button-5>")
+        except tk.TclError:
+            pass
+
+    def _on_mousewheel(self, event):
+        try:
+            if not self.scroll_canvas or not self.scroll_canvas.winfo_exists():
+                return
+            delta = 0
+            if hasattr(event, "delta") and event.delta:
+                delta = int(-1 * (event.delta / 120))
+            elif getattr(event, "num", None) == 4:
+                delta = -1
+            elif getattr(event, "num", None) == 5:
+                delta = 1
+            if delta != 0:
+                self.scroll_canvas.yview_scroll(delta, "units")
+        except tk.TclError:
+            pass
+
     def build_ui(self):
+        outer = tk.Frame(self.window, bg=COLOR_PANEL)
+        outer.pack(fill="both", expand=True, padx=14, pady=14)
+
+        self.scroll_canvas = tk.Canvas(outer, bg=COLOR_PANEL, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(outer, orient="vertical", command=self.scroll_canvas.yview)
+
+        self.scrollable_frame = tk.Frame(self.scroll_canvas, bg=COLOR_PANEL)
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+        )
+
+        canvas_window = self.scroll_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+
+        def on_canvas_configure(event):
+            try:
+                if self.scroll_canvas and self.scroll_canvas.winfo_exists():
+                    self.scroll_canvas.itemconfig(canvas_window, width=event.width)
+            except tk.TclError:
+                pass
+
+        self.scroll_canvas.bind("<Configure>", on_canvas_configure)
+        self.scroll_canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.scroll_canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+
+        self.scroll_canvas.bind("<Enter>", self._bind_mousewheel)
+        self.scroll_canvas.bind("<Leave>", self._unbind_mousewheel)
+        self.scrollable_frame.bind("<Enter>", self._bind_mousewheel)
+        self.scrollable_frame.bind("<Leave>", self._unbind_mousewheel)
+
         tk.Label(
-            self.window,
+            self.scrollable_frame,
             text=self.get_title(),
             font=("Arial", 16, "bold"),
             bg=COLOR_PANEL,
             fg=COLOR_TEXTO,
         ).pack(pady=(22, 18))
 
-        form = tk.Frame(self.window, bg=COLOR_PANEL)
+        form = tk.Frame(self.scrollable_frame, bg=COLOR_PANEL)
         form.pack(fill="x", padx=38)
 
         tk.Label(form, text="Tipo de vehículo *", font=("Arial", 11, "bold"), bg=COLOR_PANEL).pack(anchor="w", pady=(0, 5))
@@ -1065,7 +1134,7 @@ class RateDetailFormWindow:
             )
             self.entry_hora_fin.pack(fill="x", pady=(0, 12), ipady=2)
 
-        buttons = tk.Frame(self.window, bg=COLOR_PANEL)
+        buttons = tk.Frame(self.scrollable_frame, bg=COLOR_PANEL)
         buttons.pack(pady=(12, 20))
         tk.Button(buttons, text="Guardar", font=("Arial", 11, "bold"), bg=COLOR_BOTON, fg=COLOR_TEXTO,
                   bd=0, relief="flat", padx=18, pady=8, cursor="hand2", command=self.confirm_save).grid(row=0, column=0, padx=10)
