@@ -412,7 +412,7 @@ class UsersView:
 class UserFormWindow:
     def __init__(self, users_view, current_user, mode="create", user_id=None):
         self.users_view = users_view
-        self.parent = users_view
+        self.parent = users_view.parent
         self.current_user = current_user
         self.mode = mode
         self.user_id = user_id
